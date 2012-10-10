@@ -11,7 +11,7 @@ $HOTPOT_TEXTSOURCE = array(
 
 class mod_hotpot_mod_form extends moodleform_mod {
     // documentation on formslib.php here:
-    // http://docs.moodle.org/en/Development:lib/formslib.php_Form_Definition
+    // http://docs.moodle.org/dev/lib/formslib.php_Form_Definition
 
     function definition() {
         // TO DO
@@ -55,6 +55,7 @@ class mod_hotpot_mod_form extends moodleform_mod {
         } else {
             // existing HotPot
             $mform->addElement('hidden', 'namesource', HOTPOT_TEXTSOURCE_SPECIFIC);
+            $mform->setType('namesource', PARAM_RAW);
             $mform->addElement('text', 'name', get_string('name'), array('size' => '40'));
         }
         $mform->setType('namesource', PARAM_INT);
@@ -81,6 +82,7 @@ class mod_hotpot_mod_form extends moodleform_mod {
         }
         if (array_key_exists($location, $HOTPOT_LOCATION)) {
             $mform->addElement('hidden', 'location', $location);
+            $mform->setType('location', PARAM_RAW);
         } else { // admin can select from "site" or "course" files
            $mform->addElement('select', 'location', get_string('location', 'hotpot'), $HOTPOT_LOCATION);
         }
@@ -120,6 +122,7 @@ class mod_hotpot_mod_form extends moodleform_mod {
         } else {
             // existing HotPot
             $mform->addElement('hidden', 'summarysource', HOTPOT_TEXTSOURCE_SPECIFIC);
+            $mform->setType('summarysource', PARAM_RAW);
             $mform->addElement('htmleditor', 'summary', get_string('summary'));
             $mform->setType('summary', PARAM_RAW);
             $mform->setHelpButton('summary', array('writing', 'questions', 'richtext'), false, 'editorhelpbutton');
@@ -245,6 +248,7 @@ class mod_hotpot_mod_form extends moodleform_mod {
 // Remove grade item
         if (empty($this->_instance) || ! record_exists('grade_items', 'itemtype', 'mod', 'itemmodule', 'hotpot', 'iteminstance', $this->_instance)) {
             $mform->addElement('hidden', 'removegradeitem', 0);
+            $mform->setType('removegradeitem', PARAM_INT);
         } else {
             $mform->addElement('selectyesno', 'removegradeitem', get_string('removegradeitem', 'hotpot'));
             $mform->setHelpButton('removegradeitem', array('removegradeitem', get_string('removegradeitem', 'hotpot'), 'hotpot'));
@@ -264,9 +268,13 @@ class mod_hotpot_mod_form extends moodleform_mod {
         $mform->setHelpButton('clickreporting', array('clickreporting', get_string('clickreporting', 'hotpot'), 'hotpot'));
         // $mform->setAdvanced('clickreporting');
 
-//----------------------------------------------
-        $this->standard_coursemodule_elements();
-//----------------------------------------------
+//-----------------------------------------------------------------------------------------------
+        $features = new stdClass;
+        $features->groups = true;
+        $features->groupings = true;
+        $features->groupmembersonly = true;
+        $this->standard_coursemodule_elements($features);
+//-----------------------------------------------------------------------------------------------
 
         $this->add_action_buttons();
 
@@ -278,7 +286,7 @@ class mod_hotpot_mod_form extends moodleform_mod {
     }
 
     function validation(&$data) {
-        // http://docs.moodle.org/en/Development:lib/formslib.php_Validation
+        // http://docs.moodle.org/dev/lib/formslib.php_Validation
         global $CFG, $COURSE;
         $errors = array();
 

@@ -128,6 +128,20 @@ httpsrequired();
                 $user = authenticate_user_login($frm->username, $frm->password);
             }
         }
+
+        // Intercept 'restored' users to provide them with info & reset password
+        if (!$user and $frm and is_restored_user($frm->username)) {
+            print_header("$site->fullname: $loginsite", $site->fullname, $navigation, '',
+                             '', true, '<div class="langmenu">'.$langmenu.'</div>');
+            print_heading(get_string('restoredaccount'));
+            print_simple_box(get_string('restoredaccountinfo'), 'center', '70%');
+            require_once('restored_password_form.php'); // Use our "supplanter" login_forgot_password_form. MDL-20846
+            $form = new login_forgot_password_form('forgot_password.php', array('username' => $frm->username));
+            $form->display();
+            print_footer();
+            die;
+        }
+
         update_login_count();
 
         if ($user) {
@@ -165,7 +179,7 @@ httpsrequired();
                 $urltogo = $CFG->wwwroot.'/user/edit.php';
                 // We don't delete $SESSION->wantsurl yet, so we get there later
 
-            } else if (isset($SESSION->wantsurl) and (strpos($SESSION->wantsurl, $CFG->wwwroot) === 0)) {
+            } else if (isset($SESSION->wantsurl) and (strpos($SESSION->wantsurl, $CFG->wwwroot) === 0 or strpos($SESSION->wantsurl, str_replace('http://', 'https://', $CFG->wwwroot)) === 0)) {
                 $urltogo = $SESSION->wantsurl;    /// Because it's an address in this site
                 unset($SESSION->wantsurl);
 
@@ -221,10 +235,16 @@ httpsrequired();
                 $errorcode = 3;
             }
 
-            // TODO: if the user failed to authenticate, check if the username corresponds to a remote mnet user
             if ( !empty($CFG->mnet_dispatcher_mode)
                  && $CFG->mnet_dispatcher_mode === 'strict'
-                 && is_enabled_auth('mnet')) {
+                 && is_enabled_auth('mnet')
+                 && record_exists_sql("SELECT h.id FROM {$CFG->prefix}mnet_host h
+                    INNER JOIN {$CFG->prefix}mnet_host2service m ON h.id=m.hostid
+                    INNER JOIN {$CFG->prefix}mnet_service s ON s.id=m.serviceid
+                    WHERE s.name='sso_sp' AND h.deleted=0 AND m.publish = 1")
+                && record_exists_select('user', "username = '{$frm->username}' AND mnethostid != {$CFG->mnet_localhost_id}")
+            ) {
+
                 $errormsg .= get_string('loginlinkmnetuser', 'mnet', "mnet_email.php?u=$frm->username");
             }
         }

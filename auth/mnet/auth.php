@@ -170,6 +170,10 @@ class auth_plugin_mnet extends auth_plugin_base {
         global $MNET;
         require_once $CFG->dirroot . '/mnet/xmlrpc/client.php';
 
+        if (!empty($USER->realuser)) {
+            print_error('notpermittedtojumpas', 'mnet');
+        }
+
         // check remote login permissions
         if (! has_capability('moodle/site:mnetlogintoremote', get_context_instance(CONTEXT_SYSTEM))
                 or is_mnet_remote_user($USER)
@@ -228,6 +232,17 @@ class auth_plugin_mnet extends auth_plugin_base {
         $url = "{$mnet_peer->wwwroot}{$mnet_peer->application->sso_land_url}?token={$mnet_session->token}&idp={$MNET->wwwroot}&wantsurl={$wantsurl}";
 
         return $url;
+    }
+
+    /**
+     * after a successful login, land.php will call complete_user_login
+     * which will in turn regenerate the session id.
+     * this means that what is stored in mnet_session table needs updating.
+     *
+     */
+    function update_session_id() {
+        global $USER;
+        return set_field('mnet_session', 'session_id', session_id(), 'username', $USER->username, 'mnethostid', $USER->mnethostid, 'useragent', sha1($_SERVER['HTTP_USER_AGENT']));
     }
 
     /**
@@ -291,16 +306,17 @@ class auth_plugin_mnet extends auth_plugin_base {
         // TODO: refactor into a separate function
         if (empty($localuser) || ! $localuser->id) {
             if (empty($this->config->auto_add_remote_users)) {
-                print_error('nolocaluser', 'mnet');
+                print_error('nolocaluser2', 'mnet');
             }
             $remoteuser->mnethostid = $remotehost->id;
-            if (! insert_record('user', addslashes_recursive($remoteuser))) {
+            $remoteuser->firstaccess = time(); // First time user in this server, grab it here
+            $remoteuser->confirmed = 1;
+
+            if (!$remoteuser->id =  insert_record('user', addslashes_recursive($remoteuser))) {
                 print_error('databaseerror', 'mnet');
             }
             $firsttime = true;
-            if (! $localuser = get_record('user', 'username', addslashes($remoteuser->username), 'mnethostid', $remotehost->id)) {
-                print_error('nolocaluser', 'mnet');
-            }
+            $localuser = $remoteuser;
         }
 
         // check sso access control list for permission first
@@ -367,6 +383,9 @@ class auth_plugin_mnet extends auth_plugin_base {
         }
 
         $localuser->mnethostid = $remotepeer->id;
+        if (empty($localuser->firstaccess)) { // Now firstaccess, grab it here
+            $localuser->firstaccess = time();
+        }
 
         $bool = update_record('user', addslashes_recursive($localuser));
         if (!$bool) {
@@ -589,6 +608,10 @@ class auth_plugin_mnet extends auth_plugin_base {
         $local_courseid_string = implode(', ', $local_courseid_array);
         $whereclause = " userid = '$userid' AND hostid = '{$MNET_REMOTE_CLIENT->id}' AND courseid NOT IN ($local_courseid_string)";
         delete_records_select('mnet_enrol_assignments', $whereclause);
+    }
+
+    function prevent_local_passwords() {
+        return true;
     }
 
     /**
@@ -950,7 +973,7 @@ class auth_plugin_mnet extends auth_plugin_base {
                 // There is no way to capture what the custom session handler
                 // is and then reset it on each pass - I checked that out
                 // already.
-                $sesscache = clone($_SESSION);
+                $sesscache = $_SESSION;
                 $sessidcache = session_id();
                 session_write_close();
                 unset($_SESSION);
@@ -970,7 +993,7 @@ class auth_plugin_mnet extends auth_plugin_base {
                 session_name('MoodleSession'.$CFG->sessioncookie);
                 session_id($sessidcache);
                 session_start();
-                $_SESSION = clone($sesscache);
+                $_SESSION = $sesscache;
                 session_write_close();
             }
         }
@@ -1140,7 +1163,7 @@ class auth_plugin_mnet extends auth_plugin_base {
 
             $uc = ini_get('session.use_cookies');
             ini_set('session.use_cookies', false);
-            $sesscache = clone($_SESSION);
+            $sesscache = $_SESSION;
             $sessidcache = session_id();
             session_write_close();
             unset($_SESSION);
@@ -1159,7 +1182,7 @@ class auth_plugin_mnet extends auth_plugin_base {
             session_name('MoodleSession'.$CFG->sessioncookie);
             session_id($sessidcache);
             session_start();
-            $_SESSION = clone($sesscache);
+            $_SESSION = $sesscache;
             session_write_close();
 
             $end = ob_end_clean();
@@ -1186,7 +1209,7 @@ class auth_plugin_mnet extends auth_plugin_base {
 
             $uc = ini_get('session.use_cookies');
             ini_set('session.use_cookies', false);
-            $sesscache = clone($_SESSION);
+            $sesscache = $_SESSION;
             $sessidcache = session_id();
             session_write_close();
             unset($_SESSION);
@@ -1205,7 +1228,7 @@ class auth_plugin_mnet extends auth_plugin_base {
             session_name('MoodleSession'.$CFG->sessioncookie);
             session_id($sessidcache);
             session_start();
-            $_SESSION = clone($sesscache);
+            $_SESSION = $sesscache;
             session_write_close();
 
             $end = ob_end_clean();
@@ -1228,7 +1251,7 @@ class auth_plugin_mnet extends auth_plugin_base {
 
             $uc = ini_get('session.use_cookies');
             ini_set('session.use_cookies', false);
-            $sesscache = clone($_SESSION);
+            $sesscache = $_SESSION;
             $sessidcache = session_id();
             session_write_close();
             unset($_SESSION);
@@ -1247,7 +1270,7 @@ class auth_plugin_mnet extends auth_plugin_base {
             session_name('MoodleSession'.$CFG->sessioncookie);
             session_id($sessidcache);
             session_start();
-            $_SESSION = clone($sesscache);
+            $_SESSION = $sesscache;
 
             $end = ob_end_clean();
             return true;

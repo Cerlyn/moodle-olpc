@@ -98,7 +98,6 @@ class question_shortanswer_qtype extends default_questiontype {
     }
 
     function print_question_formulation_and_controls(&$question, &$state, $cmoptions, $options) {
-        global $CFG;
     /// This implementation is also used by question type 'numerical'
         $readonly = empty($options->readonly) ? '' : 'readonly="readonly"';
         $formatoptions = new stdClass;
@@ -144,7 +143,12 @@ class question_shortanswer_qtype extends default_questiontype {
         }
 
         /// Removed correct answer, to be displayed later MDL-7496
-        include("$CFG->dirroot/question/type/shortanswer/display.html");
+        include($this->get_display_html_path());
+    }
+    
+    function get_display_html_path() {
+        global $CFG;
+        return $CFG->dirroot.'/question/type/shortanswer/display.html';
     }
 
     function check_response(&$question, &$state) {
@@ -305,7 +309,7 @@ class question_shortanswer_qtype extends default_questiontype {
                     echo ' partiallycorrect">';
                     print_string('partiallycorrect', 'quiz');
                     // MDL-7496
-                    if ($correctanswer) {
+                    if ($correctanswer != '') {
                         echo ('<div class="correctness">');
                         print_string('correctansweris', 'quiz', s($correctanswer, true));
                         echo ('</div>');
@@ -314,7 +318,7 @@ class question_shortanswer_qtype extends default_questiontype {
                     echo ' incorrect">';
                     // MDL-7496
                     print_string('incorrect', 'quiz');
-                    if ($correctanswer) {
+                    if ($correctanswer != '') {
                         echo ('<div class="correctness">');
                         print_string('correctansweris', 'quiz', s($correctanswer, true));
                         echo ('</div>');

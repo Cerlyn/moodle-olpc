@@ -20,6 +20,11 @@
  * @license http://www.gnu.org/copyleft/gpl.html GNU Public License
  */
 
+if (!defined('MOODLE_INTERNAL')) {
+    die('Direct access to this script is forbidden.');    ///  It must be included from a Moodle page
+}
+
+
 //setup.php icludes our hacked pear libs first
 require_once 'HTML/QuickForm.php';
 require_once 'HTML/QuickForm/DHTMLRulesTableless.php';
@@ -101,6 +106,21 @@ class moodleform {
      * @return moodleform
      */
     function moodleform($action=null, $customdata=null, $method='post', $target='', $attributes=null, $editable=true) {
+        global $CFG;
+        if (empty($CFG->xmlstrictheaders)) {
+            // no standard mform in moodle should allow autocomplete with the exception of user signup
+            // this is valid attribute in html5, sorry, we have to ignore validation errors in legacy xhtml 1.0
+            if (empty($attributes)) {
+                $attributes = array('autocomplete'=>'off');
+            } else if (is_array($attributes)) {
+                $attributes['autocomplete'] = 'off';
+            } else {
+                if (strpos($attributes, 'autocomplete') === false) {
+                    $attributes .= ' autocomplete="off" ';
+                }
+            }
+        }
+
         if (empty($action)){
             $action = strip_querystring(qualified_me());
         }
@@ -116,8 +136,10 @@ class moodleform {
         $this->definition();
 
         $this->_form->addElement('hidden', 'sesskey', null); // automatic sesskey protection
+        $this->_form->setType('sesskey', PARAM_RAW);
         $this->_form->setDefault('sesskey', sesskey());
         $this->_form->addElement('hidden', '_qf__'.$this->_formname, null);   // form submission marker
+        $this->_form->setType('_qf__'.$this->_formname, PARAM_RAW);
         $this->_form->setDefault('_qf__'.$this->_formname, 1);
         $this->_form->_setDefaultRuleMessages();
 
@@ -572,6 +594,7 @@ class moodleform {
         $mform =& $this->_form;
         $mform->registerNoSubmitButton($addfieldsname);
         $mform->addElement('hidden', $repeathiddenname, $repeats);
+        $mform->setType($repeathiddenname, PARAM_INT);
         //value not to be overridden by submitted value
         $mform->setConstants(array($repeathiddenname=>$repeats));
         $namecloned = array();
@@ -648,12 +671,14 @@ class moodleform {
     /**
      * Adds a link/button that controls the checked state of a group of checkboxes.
      * @param int    $groupid The id of the group of advcheckboxes this element controls
-     * @param string $text The text of the link. Defaults to "select all/none"
+     * @param string $text The text of the link. Defaults to selectallornone ("select all/none")
      * @param array  $attributes associative array of HTML attributes
      * @param int    $originalValue The original general state of the checkboxes before the user first clicks this element
      */
-    function add_checkbox_controller($groupid, $buttontext, $attributes, $originalValue = 0) {
+    function add_checkbox_controller($groupid, $text = null, $attributes = null, $originalValue = 0) {
         global $CFG;
+
+        // Set the default text if none was specified
         if (empty($text)) {
             $text = get_string('selectallornone', 'form');
         }
@@ -668,6 +693,7 @@ class moodleform {
         }
 
         $mform->addElement('hidden', "checkbox_controller$groupid");
+        $mform->setType("checkbox_controller$groupid", PARAM_INT);
         $mform->setConstants(array("checkbox_controller$groupid" => $new_select_value));
 
         // Locate all checkboxes for this group and set their value, IF the optional param was given
@@ -863,6 +889,7 @@ class MoodleQuickForm extends HTML_QuickForm_DHTMLRulesTableless {
             $this->registerNoSubmitButton('mform_showadvanced');
 
             $this->addElement('hidden', 'mform_showadvanced_last');
+            $this->setType('mform_showadvanced_last', PARAM_INT);
         }
     }
     /**
@@ -1133,6 +1160,10 @@ class MoodleQuickForm extends HTML_QuickForm_DHTMLRulesTableless {
             }
         }
 
+        if (is_array($this->_constantValues)) {
+            $unfiltered = HTML_QuickForm::arrayMerge($unfiltered, $this->_constantValues);
+        }
+
         if ($addslashes){
             return $this->_recursiveFilter('addslashes', $unfiltered);
         } else {
@@ -1339,8 +1370,12 @@ function qf_errorHandler(element, _qfMsg) {
             //unset($element);
             list($jsArr,$element)=$jsandelement;
             //end of fix
+            $escapedElementName = preg_replace_callback(
+                '/[_\[\]]/',
+                create_function('$matches', 'return sprintf("_%2x",ord($matches[0]));'),
+                $elementName);
             $js .= '
-function validate_' . $this->_formName . '_' . $elementName . '(element) {
+function validate_' . $this->_formName . '_' . $escapedElementName . '(element) {
   var value = \'\';
   var errFlag = new Array();
   var _qfGroups = {};
@@ -1354,7 +1389,7 @@ function validate_' . $this->_formName . '_' . $elementName . '(element) {
 }
 ';
             $validateJS .= '
-  ret = validate_' . $this->_formName . '_' . $elementName.'(frm.elements[\''.$elementName.'\']) && ret;
+  ret = validate_' . $this->_formName . '_' . $escapedElementName.'(frm.elements[\''.$elementName.'\']) && ret;
   if (!ret && !first_focus) {
     first_focus = true;
     frm.elements[\''.$elementName.'\'].focus();
@@ -1365,7 +1400,7 @@ function validate_' . $this->_formName . '_' . $elementName . '(element) {
             //unset($element);
             //$element =& $this->getElement($elementName);
             //end of fix
-            $valFunc = 'validate_' . $this->_formName . '_' . $elementName . '(this)';
+            $valFunc = 'validate_' . $this->_formName . '_' . $escapedElementName . '(this)';
             $onBlur = $element->getAttribute('onBlur');
             $onChange = $element->getAttribute('onChange');
             $element->updateAttributes(array('onBlur' => $onBlur . $valFunc,
@@ -1466,7 +1501,7 @@ function validate_' . $this->_formName . '(frm) {
         } else if (is_a($element, 'HTML_QuickForm_hidden')) {
             return array();
 
-        } else if (method_exists($element, 'getPrivateName')) {
+        } else if (method_exists($element, 'getPrivateName') && !($element instanceof HTML_QuickForm_advcheckbox)) {
             return array($element->getPrivateName());
 
         } else {

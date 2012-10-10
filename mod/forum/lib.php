@@ -98,6 +98,8 @@ function forum_add_instance($forum) {
  * @return bool success
  */
 function forum_update_instance($forum) {
+    global $USER;
+
     $forum->timemodified = time();
     $forum->id           = $forum->instance;
 
@@ -151,6 +153,7 @@ function forum_update_instance($forum) {
         $post->subject  = $forum->name;
         $post->message  = $forum->intro;
         $post->modified = $forum->timemodified;
+        $post->userid   = $USER->id;    // MDL-18599, so that current teacher can take ownership of activities
 
         if (! update_record('forum_posts', ($post))) {
             error('Could not update the first post');
@@ -377,6 +380,12 @@ function forum_cron() {
                     continue;
                 }
 
+                // Don't send email if the forum is Q&A and the user has not posted
+                if ($forum->type == 'qanda' && !forum_get_user_posted_time($discussion->id, $userto->id)) {
+                    mtrace('Did not email '.$userto->id.' because user has not posted in discussion');
+                    continue;
+                }
+
                 // Get info about the sending user
                 if (array_key_exists($post->userid, $users)) { // we might know him/her already
                     $userfrom = $users[$post->userid];
@@ -452,12 +461,14 @@ function forum_cron() {
                            'List-Id: "'.$cleanforumname.'" <moodleforum'.$forum->id.'@'.$hostname.'>',
                            'List-Help: '.$CFG->wwwroot.'/mod/forum/view.php?f='.$forum->id,
                            'Message-ID: <moodlepost'.$post->id.'@'.$hostname.'>',
-                           'In-Reply-To: <moodlepost'.$post->parent.'@'.$hostname.'>',
-                           'References: <moodlepost'.$post->parent.'@'.$hostname.'>',
                            'X-Course-Id: '.$course->id,
                            'X-Course-Name: '.format_string($course->fullname, true)
                 );
 
+                if ($post->parent) {  // This post is a reply, so add headers for threading (see MDL-22551)
+                    $userfrom->customheaders[] = 'In-Reply-To: <moodlepost'.$post->parent.'@'.$hostname.'>';
+                    $userfrom->customheaders[] = 'References: <moodlepost'.$post->parent.'@'.$hostname.'>';
+                }
 
                 $postsubject = "$course->shortname: ".format_string($post->subject,true);
                 $posttext = forum_make_mail_text($course, $forum, $discussion, $post, $userfrom, $userto);
@@ -943,13 +954,38 @@ function forum_make_mail_html($course, $forum, $discussion, $post, $userfrom, $u
  * @return object A standard object with 2 variables: info (number of posts for this user) and time (last modified)
  */
 function forum_user_outline($course, $user, $mod, $forum) {
-    if ($count = forum_count_user_posts($forum->id, $user->id)) {
-        if ($count->postcount > 0) {
-            $result = new object();
-            $result->info = get_string("numposts", "forum", $count->postcount);
-            $result->time = $count->lastpost;
-            return $result;
+    global $CFG;
+    require_once("$CFG->libdir/gradelib.php");
+    $grades = grade_get_grades($course->id, 'mod', 'forum', $forum->id, $user->id);
+    if (empty($grades->items[0]->grades)) {
+        $grade = false;
+    } else {
+        $grade = reset($grades->items[0]->grades);
+    }
+
+    $count = forum_count_user_posts($forum->id, $user->id);
+
+    if ($count && $count->postcount > 0) {
+        $result = new object();
+        $result->info = get_string("numposts", "forum", $count->postcount);
+        $result->time = $count->lastpost;
+        if ($grade) {
+            $result->info .= ', ' . get_string('grade') . ': ' . $grade->str_long_grade;
         }
+        return $result;
+    } else if ($grade) {
+        $result = new object();
+        $result->info = get_string('grade') . ': ' . $grade->str_long_grade;
+
+        //datesubmitted == time created. dategraded == time modified or time overridden
+        //if grade was last modified by the user themselves use date graded. Otherwise use date submitted
+        if ($grade->usermodified == $user->id || empty($grade->datesubmitted)) {
+            $result->time = $grade->dategraded;
+        } else {
+            $result->time = $grade->datesubmitted;
+        }
+
+        return $result;
     }
     return NULL;
 }
@@ -960,6 +996,16 @@ function forum_user_outline($course, $user, $mod, $forum) {
  */
 function forum_user_complete($course, $user, $mod, $forum) {
     global $CFG,$USER;
+    require_once("$CFG->libdir/gradelib.php");
+
+    $grades = grade_get_grades($course->id, 'mod', 'forum', $forum->id, $user->id);
+    if (!empty($grades->items[0]->grades)) {
+        $grade = reset($grades->items[0]->grades);
+        echo '<p>'.get_string('grade').': '.$grade->str_long_grade.'</p>';
+        if ($grade->str_feedback) {
+            echo '<p>'.get_string('feedback').': '.$grade->str_feedback.'</p>';
+        }
+    }
 
     if ($posts = forum_get_user_posts($forum->id, $user->id)) {
 
@@ -1017,7 +1063,7 @@ function forum_user_complete($course, $user, $mod, $forum) {
  */
 function forum_print_overview($courses,&$htmlarray) {
     global $USER, $CFG;
-    $LIKE = sql_ilike();
+    //$LIKE = sql_ilike();//no longer using like in queries. MDL-20578
 
     if (empty($courses) || !is_array($courses) || count($courses) == 0) {
         return array();
@@ -1037,7 +1083,7 @@ function forum_print_overview($courses,&$htmlarray) {
     }
     $sql = substr($sql,0,-3); // take off the last OR
 
-    $sql .= ") AND l.module = 'forum' AND action $LIKE 'add post%' "
+    $sql .= ") AND l.module = 'forum' AND action = 'add post' "
         ." AND userid != ".$USER->id." GROUP BY cmid,l.course,instance";
 
     if (!$new = get_records_sql($sql)) {
@@ -1642,6 +1688,8 @@ function forum_get_readable_forums($userid, $courseid=0) {
             }
             $context = get_context_instance(CONTEXT_MODULE, $cm->id);
             $forum = $courseforums[$forumid];
+            $forum->context = $context;
+            $forum->cm = $cm;
 
             if (!has_capability('mod/forum:viewdiscussion', $context)) {
                 continue;
@@ -1732,8 +1780,8 @@ function forum_search_posts($searchterms, $courseid=0, $limitfrom=0, $limitnum=5
             $select[] = "(d.userid = {$USER->id} OR (d.timestart < $now AND (d.timeend = 0 OR d.timeend > $now)))";
         }
 
-        $cm = get_coursemodule_from_instance('forum', $forumid);
-        $context = get_context_instance(CONTEXT_MODULE, $cm->id);
+        $cm = $forum->cm;
+        $context = $forum->context;
 
         if ($forum->type == 'qanda'
             && !has_capability('mod/forum:viewqandawithoutposting', $context)) {
@@ -3714,7 +3762,12 @@ function forum_file_area_name($post) {
  *
  */
 function forum_file_area($post) {
-    return make_upload_directory( forum_file_area_name($post) );
+    $path = forum_file_area_name($post);
+    if ($path) {
+        return make_upload_directory($path);
+    } else {
+        return false;
+    }
 }
 
 /**
@@ -4260,6 +4313,7 @@ function forum_get_subscribe_link($forum, $context, $messages = array(), $cantac
             $backtoindexlink = '';
         }
         $link = '';
+        $sesskeylink = '&amp;sesskey='.sesskey();
 
         if ($fakelink) {
             $link .= <<<EOD
@@ -4267,14 +4321,15 @@ function forum_get_subscribe_link($forum, $context, $messages = array(), $cantac
 //<![CDATA[
 var subs_link = document.getElementById("subscriptionlink");
 if(subs_link){
-    subs_link.innerHTML = "<a title=\"$linktitle\" href='$CFG->wwwroot/mod/forum/subscribe.php?id={$forum->id}{$backtoindexlink}'>$linktext<\/a>";
+    subs_link.innerHTML = "<a title=\"$linktitle\" href='$CFG->wwwroot/mod/forum/subscribe.php?id={$forum->id}{$backtoindexlink}{$sesskeylink}'>$linktext<\/a>";
 }
 //]]>
 </script>
 <noscript>
 EOD;
         }
-        $options ['id'] = $forum->id;
+        $options['id'] = $forum->id;
+        $options['sesskey'] = sesskey();
         $link .= print_single_button($CFG->wwwroot . '/mod/forum/subscribe.php',
                 $options, $linktext, 'post', '_self', true, $linktitle);
         if ($fakelink) {
@@ -4426,6 +4481,10 @@ function forum_user_can_post_discussion($forum, $currentgroup=null, $unused=-1, 
     }
 
     if (!has_capability($capname, $context)) {
+        return false;
+    }
+
+    if ($forum->type == 'single') {
         return false;
     }
 
@@ -4595,7 +4654,7 @@ function forum_user_can_see_discussion($forum, $discussion, $context, $user=NULL
  *
  */
 function forum_user_can_see_post($forum, $discussion, $post, $user=NULL, $cm=NULL) {
-    global $USER;
+    global $CFG, $USER;
 
     // retrieve objects (yuk)
     if (is_numeric($forum)) {
@@ -4656,9 +4715,10 @@ function forum_user_can_see_post($forum, $discussion, $post, $user=NULL, $cm=NUL
     if ($forum->type == 'qanda') {
         $firstpost = forum_get_firstpost_from_discussion($discussion->id);
         $modcontext = get_context_instance(CONTEXT_MODULE, $cm->id);
+        $userfirstpost = forum_get_user_posted_time($discussion->id, $user->id);
 
-        return (forum_user_has_posted($forum->id,$discussion->id,$user->id) ||
-                $firstpost->id == $post->id ||
+        return (($userfirstpost !== false && (time() - $userfirstpost >= $CFG->maxeditingtime)) ||
+                $firstpost->id == $post->id || $post->userid == $user->id || $firstpost->userid == $user->id ||
                 has_capability('mod/forum:viewqandawithoutposting', $modcontext, $user->id, false));
     }
     return true;
@@ -4998,6 +5058,7 @@ function forum_print_discussion($course, $cm, $forum, $discussion, $post, $mode,
                 echo '<form id="form" method="post" action="rate.php">';
                 echo '<div class="ratingform">';
                 echo '<input type="hidden" name="forumid" value="'.$forum->id.'" />';
+                echo '<input type="hidden" name="sesskey" value="'.sesskey().'" />';
                 $ratingsformused = true;
             }
 
@@ -6893,6 +6954,23 @@ function forum_get_open_modes() {
  */
 function forum_get_extra_capabilities() {
     return array('moodle/site:accessallgroups', 'moodle/site:viewfullnames', 'moodle/site:trustcontent');
+}
+
+/**
+ * Returns creation time of the first user's post in given discussion
+ * @global object $DB
+ * @param int $did Discussion id
+ * @param int $userid User id
+ * @return int|bool post creation time stamp or return false
+ */
+function forum_get_user_posted_time($did, $userid) {
+    global $CFG;
+
+    $posttime = get_field('forum_posts', 'MIN(created)', 'userid', $userid, 'discussion', $did);
+    if (empty($posttime)) {
+        return false;
+    }
+    return $posttime;
 }
 
 ?>

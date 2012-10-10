@@ -78,6 +78,10 @@ class grade_report_grader extends grade_report {
      * */
     var $canviewhidden;
 
+    /** @var boolean, whether the current user is allowed to see the user report.
+     * This affects the table layout. */
+    var $canviewuserreport;
+
     var $preferences_page=false;
 
     /**
@@ -93,6 +97,7 @@ class grade_report_grader extends grade_report {
         parent::grade_report($courseid, $gpr, $context, $page);
 
         $this->canviewhidden = has_capability('moodle/grade:viewhidden', get_context_instance(CONTEXT_COURSE, $this->course->id));
+        $this->canviewuserreport = has_capability('gradereport/'.$CFG->grade_profilereport.':view', $this->context);
 
         // load collapsed settings for this report
         if ($collapsed = get_user_preferences('grade_report_grader_collapsed_categories')) {
@@ -322,41 +327,38 @@ class grade_report_grader extends grade_report {
         global $CFG;
 
         if (is_numeric($this->sortitemid)) {
-            // the MAX() magic is required in order to please PG
-            $sort = "MAX(g.finalgrade) $this->sortorder";
-
-            $sql = "SELECT u.id, u.firstname, u.lastname, u.imagealt, u.picture, u.idnumber
-                      FROM {$CFG->prefix}user u
-                           JOIN {$CFG->prefix}role_assignments ra ON ra.userid = u.id
-                           $this->groupsql
-                           LEFT JOIN {$CFG->prefix}grade_grades g ON (g.userid = u.id AND g.itemid = $this->sortitemid)
-                     WHERE ra.roleid in ($this->gradebookroles) AND u.deleted = 0
-                           $this->groupwheresql
-                           AND ra.contextid ".get_related_contexts_string($this->context)."
-                  GROUP BY u.id, u.firstname, u.lastname, u.imagealt, u.picture, u.idnumber
-                  ORDER BY $sort";
-
+            $sortjoin = "LEFT JOIN {$CFG->prefix}grade_grades g ON " .
+                    "g.userid = u.id AND g.itemid = $this->sortitemid";
+            $sort = "g.finalgrade $this->sortorder";
         } else {
+            $sortjoin = '';
             switch($this->sortitemid) {
                 case 'lastname':
-                    $sort = "u.lastname $this->sortorder, u.firstname $this->sortorder"; break;
+                    $sort = "u.lastname $this->sortorder, u.firstname $this->sortorder";
+                    break;
                 case 'firstname':
-                    $sort = "u.firstname $this->sortorder, u.lastname $this->sortorder"; break;
+                    $sort = "u.firstname $this->sortorder, u.lastname $this->sortorder";
+                    break;
                 case 'idnumber':
                 default:
-                    $sort = "u.idnumber $this->sortorder"; break;
+                    $sort = "u.idnumber $this->sortorder";
+                    break;
             }
-
-            $sql = "SELECT DISTINCT u.id, u.firstname, u.lastname, u.imagealt, u.picture, u.idnumber
-                      FROM {$CFG->prefix}user u
-                           JOIN {$CFG->prefix}role_assignments ra ON u.id = ra.userid
-                           $this->groupsql
-                     WHERE ra.roleid in ($this->gradebookroles)
-                           $this->groupwheresql
-                           AND ra.contextid ".get_related_contexts_string($this->context)."
-                  ORDER BY $sort";
         }
 
+        $sql = "SELECT u.id, u.firstname, u.lastname, u.imagealt, u.picture, u.idnumber
+                  FROM {$CFG->prefix}user u
+                       $this->groupsql
+                       $sortjoin
+                  JOIN (
+                           SELECT DISTINCT ra.userid
+                             FROM {$CFG->prefix}role_assignments ra
+                            WHERE ra.roleid IN ($this->gradebookroles)
+                              AND ra.contextid " . get_related_contexts_string($this->context) . "
+                       ) rainner ON rainner.userid = u.id
+                 WHERE u.deleted = 0
+                   $this->groupwheresql
+              ORDER BY $sort";
 
         $this->users = get_records_sql($sql, $this->get_pref('studentsperpage') * $this->page,
                             $this->get_pref('studentsperpage'));
@@ -561,7 +563,7 @@ class grade_report_grader extends grade_report {
             } else {
                 $headerhtml .= '<tr class="heading r'.$this->rowcount++.'">';
                 if ($key == $numrows - 1) {
-                    $headerhtml .= '<th class=" c'.$columncount++.'" scope="col"><a href="'.$this->baseurl.'&amp;sortitemid=firstname">'
+                    $headerhtml .= '<th class=" header c'.$columncount++.'" scope="col" colspan="2"><a href="'.$this->baseurl.'&amp;sortitemid=firstname">'
                                 . $strfirstname . '</a> '
                                 . $firstarrow. '/ <a href="'.$this->baseurl.'&amp;sortitemid=lastname">' . $strlastname . '</a>'. $lastarrow .'</th>';
                     if ($showuseridnumber) {
@@ -574,13 +576,13 @@ class grade_report_grader extends grade_report {
                         } else {
                             $idnumberarrow = '';
                         }
-                        $headerhtml .= '<th class=" c'.$columncount++.' useridnumber" scope="col"><a href="'.$this->baseurl.'&amp;sortitemid=idnumber">'
+                        $headerhtml .= '<th class="header  c'.$columncount++.' useridnumber" scope="col"><a href="'.$this->baseurl.'&amp;sortitemid=idnumber">'
                                 . get_string('idnumber') . '</a> ' . $idnumberarrow . '</th>';
                     }
                  } else {
-                    $colspan='';
+                    $colspan = 'colspan="2" ';
                     if ($showuseridnumber) {
-                        $colspan = 'colspan="2" ';
+                        $colspan = 'colspan="3" ';
                     }
 
                     $headerhtml .= '<td '.$colspan.'class="cell c'.$columncount++.' topleft">&nbsp;</td>';
@@ -625,7 +627,8 @@ class grade_report_grader extends grade_report {
                 }
 // Element is a category
                 else if ($type == 'category') {
-                    $headerhtml .= '<th class=" '. $columnclass.' category'.$catlevel.'" '.$colspan.' scope="col">'
+                    //MDL-21088 - IE 7 ignores nowraps on td or th so we put this in a span with a nowrap on it.
+                    $headerhtml .= '<th class=" '. $columnclass.' category'.$catlevel.'" '.$colspan.' scope="col"><span>'
                                 . shorten_text($element['object']->get_name());
                     $headerhtml .= $this->get_collapsing_icon($element);
 
@@ -634,7 +637,7 @@ class grade_report_grader extends grade_report {
                         $headerhtml .= $this->get_icons($element);
                     }
 
-                    $headerhtml .= '</th>';
+                    $headerhtml .= '</span></th>';
                 }
 // Element is a grade_item
                 else {
@@ -657,9 +660,20 @@ class grade_report_grader extends grade_report {
                     }
 
                     $headerlink = $this->gtree->get_element_header($element, true, $this->get_pref('showactivityicons'), false);
-                    $headerhtml .= '<th class=" '.$columnclass.' '.$type.$catlevel.$hidden.'" scope="col" onclick="set_col(this.cellIndex)">'
-                                . shorten_text($headerlink) . $arrow;
-                    $headerhtml .= '</th>';
+
+                    //The width of the table varies depending on fixedstudents.
+                    // $fixedstudents == 0, students and grades display in the same table.
+                    // $fixedstudents == 1, students and grades are display in separate table.
+                    if ($fixedstudents || !$this->canviewuserreport) {
+                        $incrementcellindex = '0';
+                    } else {
+                        $incrementcellindex = '1';
+                    }
+                    //MDL-21088 - IE 7 ignores nowraps on tds or ths so we this in a span with a nowrap on it.
+                    $headerhtml .= '<th class=" '.$columnclass.' '.$type.$catlevel.$hidden.
+                            '" scope="col" onclick="set_col(this.cellIndex,' . $incrementcellindex . ',' . (count($this->gtree->levels) - 1) .
+                            ')"><span>' . shorten_text($headerlink) . $arrow;
+                    $headerhtml .= '</span></th>';
                 }
 
             }
@@ -685,6 +699,7 @@ class grade_report_grader extends grade_report {
         $showuserimage = $this->get_pref('showuserimage');
         $showuseridnumber = $this->get_pref('showuseridnumber');
         $fixedstudents = $this->is_fixed_students();
+        $canviewfullname = has_capability('moodle/site:viewfullnames', $this->context);
 
         // Preload scale objects for items with a scaleid
         $scales_list = '';
@@ -705,8 +720,6 @@ class grade_report_grader extends grade_report {
             $scales_list = substr($scales_list, 0, -1);
             $scales_array = get_records_list('scale', 'id', $scales_list);
         }
-
-        $row_classes = array(' even ', ' odd ');
 
         $row_classes = array(' even ', ' odd ');
 
@@ -732,10 +745,22 @@ class grade_report_grader extends grade_report {
                     $user_pic = '<div class="userpic">' . print_user_picture($user, $this->courseid, null, 0, true) . '</div>';
                 }
 
+                //we're either going to add a th or a colspan to keep things aligned
+                $userreportcell = '';
+                $userreportcellcolspan = '';
+                if ($this->canviewuserreport) {
+                    $a->user = fullname($user, $canviewfullname);
+                    $strgradesforuser = get_string('gradesforuser', 'grades', $a);
+                    $userreportcell = '<th class="header userreport"><a href="'.$CFG->wwwroot.'/grade/report/'.$CFG->grade_profilereport.'/index.php?id='.$this->courseid.'&amp;userid='.$user->id.'">'
+                                    .'<img src="'.$CFG->pixpath.'/t/grades.gif" alt="'.$strgradesforuser.'" title="'.$strgradesforuser.'" /></a></th>';
+                } else {
+                    $userreportcellcolspan = 'colspan=2';
+                }
+
                 $studentshtml .= '<tr class="r'.$this->rowcount++ . $row_classes[$this->rowcount % 2] . '">'
-                              .'<th class="c'.$columncount++.' user" scope="row" onclick="set_row(this.parentNode.rowIndex);">'.$user_pic
+                              .'<th class="c'.$columncount++.' user" scope="row" onclick="set_row(this.parentNode.rowIndex);" '.$userreportcellcolspan.' >'.$user_pic
                               .'<a href="'.$CFG->wwwroot.'/user/view.php?id='.$user->id.'&amp;course='.$this->course->id.'">'
-                              .fullname($user).'</a></th>';
+                              .fullname($user, $canviewfullname)."</a></th>$userreportcell\n";
 
                 if ($showuseridnumber) {
                     $studentshtml .= '<th class="c'.$columncount++.' useridnumber" onclick="set_row(this.parentNode.rowIndex);">'.
@@ -931,7 +956,8 @@ class grade_report_grader extends grade_report {
         $strsortdesc  = $this->get_lang_string('sortdesc', 'grades');
         $strfirstname = $this->get_lang_string('firstname');
         $strlastname  = $this->get_lang_string('lastname');
-
+        $canviewfullname = has_capability('moodle/site:viewfullnames', $this->context);
+        
         if ($this->sortitemid === 'lastname') {
             if ($this->sortorder == 'ASC') {
                 $lastarrow = print_arrow('up', $strsortasc, true);
@@ -957,9 +983,9 @@ class grade_report_grader extends grade_report {
                 <table id="fixed_column" class="fixed_grades_column">
                     <tbody class="leftbody">';
 
-            $colspan = '';
+            $colspan = 'colspan="2"';
             if ($showuseridnumber) {
-                $colspan = 'colspan="2"';
+                $colspan = 'colspan="3"';
             }
 
             $levels = count($this->gtree->levels) - 1;
@@ -973,7 +999,7 @@ class grade_report_grader extends grade_report {
                         ';
             }
 
-            $studentshtml .= '<tr class="heading"><th id="studentheader" class="header c0" scope="col"><a href="'.$this->baseurl.'&amp;sortitemid=firstname">'
+            $studentshtml .= '<tr class="heading"><th id="studentheader" colspan="2" class="header c0" scope="col"><a href="'.$this->baseurl.'&amp;sortitemid=firstname">'
                         . $strfirstname . '</a> '
                         . $firstarrow. '/ <a href="'.$this->baseurl.'&amp;sortitemid=lastname">' . $strlastname . '</a>'. $lastarrow .'</th>';
 
@@ -1006,13 +1032,26 @@ class grade_report_grader extends grade_report {
                     $user_pic = '<div class="userpic">' . print_user_picture($user, $this->courseid, NULL, 0, true) . "</div>\n";
                 }
 
+                //either add a th or a colspan to keep things aligned
+                $userreportcell = '';
+                $userreportcellcolspan = '';
+                if ($this->canviewuserreport) {
+                    $a->user = fullname($user, $canviewfullname);
+                    $strgradesforuser = get_string('gradesforuser', 'grades', $a);
+                    $userreportcell = '<th class="userreport"><a href="'.$CFG->wwwroot.'/grade/report/'.$CFG->grade_profilereport.'/index.php?id='.$this->courseid.'&amp;userid='.$user->id.'">'
+                                    .'<img src="'.$CFG->pixpath.'/t/grades.gif" alt="'.$strgradesforuser.'" title="'.$strgradesforuser.'" /></a></th>';
+                }
+                else {
+                    $userreportcellcolspan = 'colspan=2';
+                }
+
                 $studentshtml .= '<tr class="r'.$this->rowcount++ . $row_classes[$this->rowcount % 2] . '">'
-                              .'<th class="c0 user" scope="row" onclick="set_row(this.parentNode.rowIndex);">'.$user_pic
+                              .'<th class="c0 user" scope="row" onclick="set_row(this.parentNode.rowIndex);" '.$userreportcellcolspan.' >'.$user_pic
                               .'<a href="'.$CFG->wwwroot.'/user/view.php?id='.$user->id.'&amp;course='.$this->course->id.'">'
-                              .fullname($user)."</a></th>\n";
+                              .fullname($user, $canviewfullname)."</a></th>$userreportcell\n";
 
                 if ($showuseridnumber) {
-                    $studentshtml .= '<th class="header c0 useridnumber" onclick="set_row(this.parentNode.rowIndex);">'. $user->idnumber."</th>\n";
+                    $studentshtml .= '<th class="c0 useridnumber" onclick="set_row(this.parentNode.rowIndex);">'. $user->idnumber."</th>\n";
                 }
                 $studentshtml .= "</tr>\n";
             }
@@ -1110,20 +1149,24 @@ class grade_report_grader extends grade_report {
         if ($showaverages) {
 
             // find sums of all grade items in course
-            $SQL = "SELECT g.itemid, SUM(g.finalgrade) AS sum
+            $sql = "SELECT g.itemid, SUM(g.finalgrade) AS sum
                       FROM {$CFG->prefix}grade_items gi
-                           JOIN {$CFG->prefix}grade_grades g      ON g.itemid = gi.id
-                           JOIN {$CFG->prefix}user u              ON u.id = g.userid
-                           JOIN {$CFG->prefix}role_assignments ra ON ra.userid = u.id
+                           JOIN {$CFG->prefix}grade_grades g ON g.itemid = gi.id
+                           JOIN {$CFG->prefix}user u ON u.id = g.userid
                            $groupsql
-                     WHERE gi.courseid = $this->courseid
-                           AND ra.roleid in ($this->gradebookroles)
-                           AND ra.contextid ".get_related_contexts_string($this->context)."
-                           AND g.finalgrade IS NOT NULL
-                           $groupwheresql
+                           JOIN (
+                               SELECT DISTINCT ra.userid
+                                 FROM {$CFG->prefix}role_assignments ra
+                                WHERE ra.roleid IN ($this->gradebookroles)
+                                  AND ra.contextid " . get_related_contexts_string($this->context) . "
+                           ) rainner ON rainner.userid = u.id
+                       WHERE gi.courseid = $this->courseid
+                       AND u.deleted = 0
+                       AND g.finalgrade IS NOT NULL
+                       $groupwheresql
                   GROUP BY g.itemid";
             $sum_array = array();
-            if ($sums = get_records_sql($SQL)) {
+            if ($sums = get_records_sql($sql)) {
                 foreach ($sums as $itemid => $csum) {
                     $sum_array[$itemid] = $csum->sum;
                 }
@@ -1135,26 +1178,27 @@ class grade_report_grader extends grade_report {
 
             // MDL-10875 Empty grades must be evaluated as grademin, NOT always 0
             // This query returns a count of ungraded grades (NULL finalgrade OR no matching record in grade_grades table)
-            $SQL = "SELECT gi.id, COUNT(u.id) AS count
+            $sql = "SELECT gi.id, COUNT(DISTINCT u.id) AS count
                       FROM {$CFG->prefix}grade_items gi
                            CROSS JOIN {$CFG->prefix}user u
-                           JOIN {$CFG->prefix}role_assignments ra        ON ra.userid = u.id
-                           LEFT OUTER JOIN  {$CFG->prefix}grade_grades g ON (g.itemid = gi.id AND g.userid = u.id AND g.finalgrade IS NOT NULL)
+                           JOIN {$CFG->prefix}role_assignments ra       ON ra.userid = u.id
+                           LEFT OUTER JOIN {$CFG->prefix}grade_grades g ON g.itemid = gi.id AND g.userid = u.id AND g.finalgrade IS NOT NULL
                            $groupsql
                      WHERE gi.courseid = $this->courseid
-                           AND ra.roleid in ($this->gradebookroles)
-                           AND ra.contextid ".get_related_contexts_string($this->context)."
+                           AND ra.roleid IN ($this->gradebookroles)
+                           AND u.deleted = 0
+                           AND ra.contextid " . get_related_contexts_string($this->context) . "
                            AND g.id IS NULL
                            $groupwheresql
                   GROUP BY gi.id";
 
-            $ungraded_counts = get_records_sql($SQL);
+            $ungraded_counts = get_records_sql($sql);
 
             $fixedstudents = $this->is_fixed_students();
             if (!$fixedstudents) {
-                $colspan='';
+                $colspan='colspan="2" ';
                 if ($this->get_pref('showuseridnumber')) {
-                    $colspan = 'colspan="2" ';
+                    $colspan = 'colspan="3" ';
                 }
                 $avghtml .= '<th class="header c0 range" '.$colspan.' scope="row">'.$straverage.'</th>';
             }
@@ -1242,9 +1286,9 @@ class grade_report_grader extends grade_report {
 
             $fixedstudents = $this->is_fixed_students();
             if (!$fixedstudents) {
-                $colspan='';
-                if ($this->get_pref('showuseridnumber')) {
-                    $colspan = 'colspan="2" ';
+                $colspan='colspan="2" ';
+	                 if ($this->get_pref('showuseridnumber')) {
+                    $colspan = 'colspan="3" ';
                 }
                 $rangehtml .= '<th class="header c0 range" '.$colspan.' scope="row">'.$this->get_lang_string('range','grades').'</th>';
             }
@@ -1283,9 +1327,9 @@ class grade_report_grader extends grade_report {
             $fixedstudents = $this->is_fixed_students();
             $showuseridnumber = $this->get_pref('showuseridnumber');
 
-            $colspan = '';
+            $colspan = 'colspan="2"';
             if ($showuseridnumber) {
-                $colspan = 'colspan="2"';
+                $colspan = 'colspan="3"';
             }
 
             if (!$fixedstudents) {

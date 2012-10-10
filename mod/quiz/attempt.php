@@ -77,7 +77,7 @@
 
     $strattemptnum = get_string('attempt', 'quiz', $attemptnumber);
     $strquizzes = get_string("modulenameplural", "quiz");
-    $popup = $quiz->popup && !$ispreviewing; // Controls whether this is shown in a javascript-protected window.
+    $popup = $quiz->popup && !$ispreviewing; // Controls whether this is shown in a javascript-protected window or with a safe browser.
 
 /// We intentionally do not check open and close times here. Instead we do it lower down.
 /// This is to deal with what happens when someone submits close to the exact moment when the quiz closes.
@@ -87,6 +87,11 @@
         "userid = '{$USER->id}' AND timefinish > 0 AND preview != 1");
     if (!empty($quiz->attempts) and $numberofpreviousattempts >= $quiz->attempts) {
         print_error('nomoreattempts', 'quiz', "view.php?id={$cm->id}");
+    }
+
+/// Check safe browser
+    if (!$ispreviewing && $quiz->popup == 2 && !quiz_check_safe_browser()) {
+        print_error('safebrowsererror', 'quiz', "view.php?id={$cm->id}");
     }
 
 /// Check subnet access
@@ -111,9 +116,7 @@
             // User entered the wrong password, or has not entered one yet.
             $url = $CFG->wwwroot . '/mod/quiz/attempt.php?q=' . $quiz->id;
 
-            if (empty($popup)) {
-                print_header('', '', '', 'quizpassword');
-            }
+            print_header('', '', '', 'quizpassword');
 
             if (trim(strip_tags($quiz->intro))) {
                 $formatoptions->noclean = true;
@@ -135,9 +138,7 @@
 </form>
 <?php
             print_box_end();
-            if (empty($popup)) {
-                print_footer();
-            }
+            print_footer('empty');
             exit;
         }
     }
@@ -150,9 +151,14 @@
             $numattempts = 0;
         }
         $timenow = time();
-        $lastattempt_obj = get_record_select('quiz_attempts', "quiz = $quiz->id AND attempt = $numattempts AND userid = $USER->id", 'timefinish');
+        $lastattempt_obj = get_record_select('quiz_attempts',
+                "quiz = $quiz->id AND attempt = $numattempts AND userid = $USER->id",
+                'timefinish, timestart');
         if ($lastattempt_obj) {
             $lastattempt = $lastattempt_obj->timefinish;
+            if ($quiz->timelimit > 0) {
+                $lastattempt = min($lastattempt, $lastattempt_obj->timestart + $quiz->timelimit*60);
+            }
         }
         if ($numattempts == 1 && !empty($quiz->delay1)) {
             if ($timenow - $quiz->delay1 < $lastattempt) {
@@ -412,10 +418,12 @@
     require_js($CFG->wwwroot . '/mod/quiz/quiz.js');
     $pagequestions = explode(',', $pagelist);
     $headtags = get_html_head_contributions($pagequestions, $questions, $states);
-    if (!empty($popup)) {
+    if (!$ispreviewing && $quiz->popup) {
         define('MESSAGE_WINDOW', true);  // This prevents the message window coming up
         print_header($course->shortname.': '.format_string($quiz->name), '', '', '', $headtags, false, '', '', false, ' class="securewindow"');
-        include('protect_js.php');
+        if ($quiz->popup == 1) {
+            include('protect_js.php');
+        }
     } else {
         $strupdatemodule = has_capability('moodle/course:manageactivities', $coursecontext)
                     ? update_module_button($cm->id, $course->id, get_string('modulename', 'quiz'))
@@ -439,8 +447,10 @@
         print_single_button($CFG->wwwroot.'/mod/quiz/attempt.php', $buttonoptions, get_string('startagain', 'quiz'));
         echo '</div>';
     /// Notices about restrictions that would affect students.
-        if ($quiz->popup) {
+        if ($quiz->popup == 1) {
             notify(get_string('popupnotice', 'quiz'));
+        } else if ($quiz->popup == 2) {
+            notify(get_string('safebrowsernotice', 'quiz'));
         }
         if ($timestamp < $quiz->timeopen || ($quiz->timeclose && $timestamp > $quiz->timeclose)) {
             notify(get_string('notavailabletostudents', 'quiz'));
@@ -460,8 +470,11 @@
     $quiz->thispageurl = $CFG->wwwroot . '/mod/quiz/attempt.php?q=' . s($quiz->id) . '&amp;page=' . s($page);
     $quiz->cmid = $cm->id;
     echo '<form id="responseform" method="post" action="', $quiz->thispageurl . '" enctype="multipart/form-data"' .
-            ' onclick="this.autocomplete=\'off\'" onkeypress="return check_enter(event);" accept-charset="utf-8">', "\n";
-    if($quiz->timelimit > 0) {
+            ' onkeypress="return check_enter(event);" accept-charset="utf-8">', "\n";
+    echo '<script type="text/javascript">', "\n",
+            'document.getElementById("responseform").setAttribute("autocomplete", "off")', "\n",
+            "</script>\n";
+    if ($quiz->timelimit > 0) {
         // Make sure javascript is enabled for time limited quizzes
         ?>
         <script type="text/javascript">

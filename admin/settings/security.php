@@ -8,6 +8,7 @@ if ($hassiteconfig) { // speedup for non-admins, add all caps used on this page
     $temp->add(new admin_setting_configcheckbox('protectusernames', get_string('protectusernames', 'admin'), get_string('configprotectusernames', 'admin'), 1));
     $temp->add(new admin_setting_configcheckbox('forcelogin', get_string('forcelogin', 'admin'), get_string('configforcelogin', 'admin'), 0));
     $temp->add(new admin_setting_configcheckbox('forceloginforprofiles', get_string('forceloginforprofiles', 'admin'), get_string('configforceloginforprofiles', 'admin'), 1));
+    $temp->add(new admin_setting_configcheckbox('forceloginforprofileimage', get_string('forceloginforprofileimage', 'admin'), get_string('forceloginforprofileimage_help', 'admin'), 0));
     $temp->add(new admin_setting_configcheckbox('opentogoogle', get_string('opentogoogle', 'admin'), get_string('configopentogoogle', 'admin'), 0));
 
     $max_upload_choices = get_max_upload_sizes();
@@ -26,7 +27,7 @@ if ($hassiteconfig) { // speedup for non-admins, add all caps used on this page
                        2700 => get_string('numminutes', '', 45),
                        3600 => get_string('numminutes', '', 60))));
     $temp->add(new admin_setting_configselect('fullnamedisplay', get_string('fullnamedisplay', 'admin'), get_string('configfullnamedisplay', 'admin'),
-                  'firstname lastname', array('language' => get_string('language'),
+                  'language', array('language' => get_string('language'),
                                               'firstname lastname' => get_string('firstname').' + '.get_string('lastname'),
                                               'lastname firstname' => get_string('lastname').' + '.get_string('firstname'),
                                               'firstname' => get_string('firstname'))));
@@ -46,7 +47,7 @@ if ($hassiteconfig) { // speedup for non-admins, add all caps used on this page
     $temp->add(new admin_setting_configcheckbox('cronclionly', get_string('cronclionly', 'admin'), get_string('configcronclionly', 'admin'), 0));
     $temp->add(new admin_setting_configpasswordunmask('cronremotepassword', get_string('cronremotepassword', 'admin'), get_string('configcronremotepassword', 'admin'), ''));
 
-    $temp->add(new admin_setting_configcheckbox('passwordpolicy', get_string('passwordpolicy', 'admin'), get_string('configpasswordpolicy', 'admin'), 0));
+    $temp->add(new admin_setting_configcheckbox('passwordpolicy', get_string('passwordpolicy', 'admin'), get_string('configpasswordpolicy', 'admin'), 1));
     $temp->add(new admin_setting_configtext('minpasswordlength', get_string('minpasswordlength', 'admin'), get_string('configminpasswordlength', 'admin'), 8, PARAM_INT));
     $temp->add(new admin_setting_configtext('minpassworddigits', get_string('minpassworddigits', 'admin'), get_string('configminpassworddigits', 'admin'), 1, PARAM_INT));
     $temp->add(new admin_setting_configtext('minpasswordlower', get_string('minpasswordlower', 'admin'), get_string('configminpasswordlower', 'admin'), 1, PARAM_INT));
@@ -65,15 +66,17 @@ if ($hassiteconfig) { // speedup for non-admins, add all caps used on this page
     $temp->add(new admin_setting_configcheckbox('loginhttps', get_string('loginhttps', 'admin'), get_string('configloginhttps', 'admin'), 0));
     $temp->add(new admin_setting_configcheckbox('cookiesecure', get_string('cookiesecure', 'admin'), get_string('configcookiesecure', 'admin'), 0));
     $temp->add(new admin_setting_configcheckbox('cookiehttponly', get_string('cookiehttponly', 'admin'), get_string('configcookiehttponly', 'admin'), 0));
-    $temp->add(new admin_setting_configcheckbox('regenloginsession', get_string('regenloginsession', 'admin'), get_string('configregenloginsession', 'admin'), 0));
+    $temp->add(new admin_setting_configcheckbox('regenloginsession', get_string('regenloginsession', 'admin'), get_string('configregenloginsession', 'admin'), 1));
+    $temp->add(new admin_setting_configtext('excludeoldflashclients', get_string('excludeoldflashclients', 'admin'), get_string('configexcludeoldflashclients', 'admin'), '10.0.12', PARAM_TEXT));
+    $temp->add(new admin_setting_configcheckbox('loginpasswordautocomplete', get_string('loginpasswordautocomplete', 'admin'), get_string('loginpasswordautocomplete_help', 'admin'), 0));
     $ADMIN->add('security', $temp);
 
 
     // "modulesecurity" settingpage
     $temp = new admin_settingpage('modulesecurity', get_string('modulesecurity', 'admin'));
-    $temp->add(new admin_setting_configselect('restrictmodulesfor', get_string('restrictmodulesfor', 'admin'), get_string('configrestrictmodulesfor', 'admin'), 'none', array('none' => 'No courses',
-                                                                                                                                                                              'all' => 'All courses',
-                                                                                                                                                                              'requested' => 'Requested courses')));
+    $temp->add(new admin_setting_configselect('restrictmodulesfor', get_string('restrictmodulesfor', 'admin'), get_string('configrestrictmodulesfor', 'admin'), 'none', array('none' => get_string('nocourses'),
+                                                                                                                                                                              'all' => get_string('fulllistofcourses'),
+                                                                                                                                                                              'requested' => get_string('requestedcourses'))));
     $temp->add(new admin_setting_configcheckbox('restrictbydefault', get_string('restrictbydefault', 'admin'), get_string('configrestrictbydefault', 'admin'), 0));
     if (!$options = get_records("modules")) {
         $options = array();

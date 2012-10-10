@@ -317,17 +317,21 @@ function grade_update($source, $courseid, $itemtype, $itemmodule, $iteminstance,
  * @param int $iteminstance id of the item module
  * @param int $userid ID of the graded user
  * @param array $data array itemnumber=>outcomegrade
+ * @return boolean returns true if grade items were found and updated successfully
  */
 function grade_update_outcomes($source, $courseid, $itemtype, $itemmodule, $iteminstance, $userid, $data) {
     if ($items = grade_item::fetch_all(array('itemtype'=>$itemtype, 'itemmodule'=>$itemmodule, 'iteminstance'=>$iteminstance, 'courseid'=>$courseid))) {
+        $result = true;
         foreach ($items as $item) {
             if (!array_key_exists($item->itemnumber, $data)) {
                 continue;
             }
             $grade = $data[$item->itemnumber] < 1 ? null : $data[$item->itemnumber];
-            $item->update_final_grade($userid, $grade, $source);
+            $result = ($item->update_final_grade($userid, $grade, $source) && $result);
         }
+        return $result;
     }
+    return false; //grade items not found
 }
 
 /**
@@ -1136,7 +1140,7 @@ function grade_update_mod_grades($modinstance, $userid=0) {
                         // good old numeric value
                         $grade->rawgrade = $usergrade;
                     }
-                    $grades[] = $grade;
+                    $grades[$uid] = $grade;
                 }
 
                 grade_update('legacygrab', $grade_item->courseid, $grade_item->itemtype, $grade_item->itemmodule,

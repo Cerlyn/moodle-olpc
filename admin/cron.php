@@ -223,6 +223,9 @@
     grade_cron();
     mtrace('done.');
 
+    mtrace('Starting processing the event queue...');
+    events_cron();
+    mtrace('done.');
 
 /// Run all core cron jobs, but not every time since they aren't too important.
 /// These don't have a timer to reduce load, so we'll use a random number 
@@ -238,10 +241,13 @@
 
         if ($CFG->longtimenosee) { // value in days
             $cuttime = $timenow - ($CFG->longtimenosee * 3600 * 24);
-            $rs = get_recordset_sql ("SELECT id, userid, courseid
-                                        FROM {$CFG->prefix}user_lastaccess
-                                       WHERE courseid != ".SITEID."
-                                         AND timeaccess < $cuttime ");
+            $rs = get_recordset_sql ("SELECT la.id, la.userid, la.courseid
+                                        FROM {$CFG->prefix}user_lastaccess la
+                                        JOIN {$CFG->prefix}course c
+                                          ON c.id = la.courseid
+                                       WHERE la.courseid != ".SITEID."
+                                         AND la.timeaccess < $cuttime
+                                         AND c.metacourse = 0 ");
             while ($assign = rs_fetch_next_record($rs)) {
                 if ($context = get_context_instance(CONTEXT_COURSE, $assign->courseid)) {
                     if (role_unassign(0, $assign->userid, 0, $context->id)) {
@@ -345,25 +351,24 @@
         mtrace('checking for create_password');
         if (count_records('user_preferences', 'name', 'create_password', 'value', '1')) {
             mtrace('creating passwords for new users');
-            $newusers = get_records_sql("SELECT  u.id as id, u.email, u.firstname, 
-                                                u.lastname, u.username,
-                                                p.id as prefid 
-                                        FROM {$CFG->prefix}user u 
-                                             JOIN {$CFG->prefix}user_preferences p ON u.id=p.userid
-                                        WHERE p.name='create_password' AND p.value='1' AND u.email !='' ");
-
-            foreach ($newusers as $newuserid => $newuser) {
-                $newuser->emailstop = 0; // send email regardless
-                // email user                               
-                if (setnew_password_and_mail($newuser)) {
-                    // remove user pref
-                    delete_records('user_preferences', 'id', $newuser->prefid);
-                } else {
-                    trigger_error("Could not create and mail new user password!");
+            $newuserssql = "SELECT u.id as id, u.email, u.firstname, u.lastname, u.username, p.id as prefid
+                              FROM {$CFG->prefix}user u
+                              JOIN {$CFG->prefix}user_preferences p ON u.id=p.userid
+                             WHERE p.name='create_password' AND p.value='1' AND u.email !='' ";
+            if ($newusers = get_records_sql($newuserssql)) {
+                foreach ($newusers as $newuserid => $newuser) {
+                    $newuser->emailstop = 0; // send email regardless
+                    // email user
+                    if (setnew_password_and_mail($newuser)) {
+                        // remove user pref
+                        delete_records('user_preferences', 'id', $newuser->prefid);
+                    } else {
+                        trigger_error("Could not create and mail new user password!");
+                    }
                 }
             }
         }
-        
+
         if (!empty($CFG->usetags)) {
             require_once($CFG->dirroot.'/tag/lib.php');
             tag_cron();
@@ -481,44 +486,44 @@
 
     // run gradebook import/export/report cron
     if ($gradeimports = get_list_of_plugins('grade/import')) {
-        foreach ($gradeimports as $gradeimport) {           
+        foreach ($gradeimports as $gradeimport) {
             if (file_exists($CFG->dirroot.'/grade/import/'.$gradeimport.'/lib.php')) {
                 require_once($CFG->dirroot.'/grade/import/'.$gradeimport.'/lib.php');
-                $cron_function = 'grade_import_'.$gradeimport.'_cron';                                    
+                $cron_function = 'grade_import_'.$gradeimport.'_cron';
                 if (function_exists($cron_function)) {
                     mtrace("Processing gradebook import function $cron_function ...", '');
-                    $cron_function;  
+                    $cron_function();
                 }
             }
-        }      
+        }
     }
 
     if ($gradeexports = get_list_of_plugins('grade/export')) {
-        foreach ($gradeexports as $gradeexport) {           
+        foreach ($gradeexports as $gradeexport) {
             if (file_exists($CFG->dirroot.'/grade/export/'.$gradeexport.'/lib.php')) {
                 require_once($CFG->dirroot.'/grade/export/'.$gradeexport.'/lib.php');
-                $cron_function = 'grade_export_'.$gradeexport.'_cron';                                    
+                $cron_function = 'grade_export_'.$gradeexport.'_cron';
                 if (function_exists($cron_function)) {
                     mtrace("Processing gradebook export function $cron_function ...", '');
-                    $cron_function;  
+                    $cron_function();
                 }
             }
         }
     }
 
     if ($gradereports = get_list_of_plugins('grade/report')) {
-        foreach ($gradereports as $gradereport) {           
+        foreach ($gradereports as $gradereport) {
             if (file_exists($CFG->dirroot.'/grade/report/'.$gradereport.'/lib.php')) {
                 require_once($CFG->dirroot.'/grade/report/'.$gradereport.'/lib.php');
-                $cron_function = 'grade_report_'.$gradereport.'_cron';                                    
+                $cron_function = 'grade_report_'.$gradereport.'_cron';
                 if (function_exists($cron_function)) {
                     mtrace("Processing gradebook report function $cron_function ...", '');
-                    $cron_function;  
+                    $cron_function();
                 }
             }
         }
     }
-    
+
     // run any customized cronjobs, if any
     // looking for functions in lib/local/cron.php
     if (file_exists($CFG->dirroot.'/local/cron.php')) {

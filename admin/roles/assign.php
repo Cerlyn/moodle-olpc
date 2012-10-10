@@ -73,7 +73,7 @@
     $straction = get_string('assignroles', 'role');
     $strroletoassign = get_string('roletoassign', 'role');
     $strsearch = get_string('search');
-    $strshowall = get_string('showall');
+    $strshowall = get_string('showallusers');
     $strparticipants = get_string('participants');
     $strsearchresults = get_string('searchresults');
 
@@ -356,7 +356,7 @@
                 if ($validroleids) {
                     $roleids =  '('.implode(',', $validroleids).')';
 
-                    $select = " SELECT u.id, u.firstname, u.lastname, u.email, u.username";
+                    $select = " SELECT DISTINCT u.id, u.firstname, u.lastname, u.email, u.username";
                     $countselect = "SELECT COUNT(u.id)";
                     $from   = " FROM {$CFG->prefix}user u
                                 INNER JOIN {$CFG->prefix}role_assignments ra ON ra.userid = u.id

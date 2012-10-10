@@ -400,18 +400,18 @@ class question_match_qtype extends default_questiontype {
 
     // ULPGC ecastro
     function get_actual_response($question, $state) {
-       $subquestions = &$state->options->subquestions;
-       $responses    = &$state->responses;
-       $results=array();
-       foreach ($subquestions as $key => $sub) {
-           foreach ($responses as $ind => $code) {
-               if (isset($sub->options->answers[$code])) {
-                   $results[$ind] =  $subquestions[$ind]->questiontext . ": " . $sub->options->answers[$code]->answer;
-               }
-           }
-       }
-       return $results;
-   }
+        $subquestions = &$state->options->subquestions;
+        $responses    = &$state->responses;
+        $results=array();
+        foreach ($responses as $ind => $code) {
+            foreach ($subquestions as $key => $sub) {
+                if (isset($sub->options->answers[$code])) {
+                    $results[$ind] =  $subquestions[$ind]->questiontext . ": " . $sub->options->answers[$code]->answer;
+                }
+            }
+        }
+        return $results;
+    }
 
     function response_summary($question, $state, $length=80) {
         // This should almost certainly be overridden
@@ -571,9 +571,9 @@ class question_match_qtype extends default_questiontype {
             //mappings in backup_ids to use them later where restoring states (user level).
 
             //Get the match_sub from DB (by question, questiontext and answertext)
-            $db_match_sub = get_record ("question_match_sub","question",$new_question_id,
-                                                      "questiontext",$match_sub->questiontext,
-                                                      "answertext",$match_sub->answertext);
+            $db_match_sub = get_record('question_match_sub', 'question', $new_question_id,
+                    sql_compare_text('questiontext', 255), $match_sub->questiontext,
+                    'answertext', $match_sub->answertext);
             //Do some output
             if (($i+1) % 50 == 0) {
                 if (!defined('RESTORE_SILENTLY')) {

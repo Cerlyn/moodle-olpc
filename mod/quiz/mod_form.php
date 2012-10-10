@@ -194,8 +194,14 @@ class mod_quiz_mod_form extends moodleform_mod {
 //-------------------------------------------------------------------------------
         $mform->addElement('header', 'security', get_string('security', 'form'));
 
-        $mform->addElement('selectyesno', 'popup', get_string("popup", "quiz"));
-        $mform->setHelpButton('popup', array("popup", get_string("popup", "quiz"), "quiz"));
+        $options = array(
+                    0 => get_string('none', 'quiz'),
+                    1 => get_string('popupwithjavascriptsupport', 'quiz'));
+        if (!empty($CFG->enablesafebrowserintegration)) {
+            $options[2] = get_string('requiresafeexambrowser', 'quiz');
+        }
+        $mform->addElement('select', 'popup', get_string('browsersecurity', 'quiz'), $options);
+        $mform->setHelpButton('popup', array('browsersecurity', get_string('browsersecurity', 'quiz'), 'quiz'));
         $mform->setAdvanced('popup', $CFG->quiz_fix_popup);
         $mform->setDefault('popup', $CFG->quiz_popup);
 
@@ -222,6 +228,7 @@ class mod_quiz_mod_form extends moodleform_mod {
         $mform->setHelpButton('overallfeedbackhdr', array('overallfeedback', get_string('overallfeedback', 'quiz'), 'quiz'));
 
         $mform->addElement('hidden', 'grade', $CFG->quiz_maximumgrade);
+        $mform->setType('grade', PARAM_RAW);
         if (empty($this->_cm)) {
             $needwarning = $CFG->quiz_maximumgrade == 0;
         } else {
@@ -275,6 +282,14 @@ class mod_quiz_mod_form extends moodleform_mod {
             $key = 0;
             foreach ($this->_feedbacks as $feedback){
                 $default_values['feedbacktext['.$key.']'] = $feedback->feedbacktext;
+                if ($default_values['grade'] == 0) {
+                    // When a quiz is un-graded, there can only be one lot of
+                    // feedback. If the quiz previously had a maximum grade and
+                    // several lots of feedback, we must now avoid putting text
+                    // into input boxes that are disabled, but which the
+                    // validation will insist are blank.
+                    break;
+                }
                 if ($feedback->mingrade > 0) {
                     $default_values['feedbackboundaries['.$key.']'] = (100.0 * $feedback->mingrade / $default_values['grade']) . '%';
                 }

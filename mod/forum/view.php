@@ -65,6 +65,11 @@
     $context = get_context_instance(CONTEXT_MODULE, $cm->id);
 
 /// Print header.
+
+    /// Add ajax-related libs
+    require_js(array('yui_yahoo', 'yui_event', 'yui_dom', 'yui_connection', 'yui_json'));
+    require_js($CFG->wwwroot . '/mod/forum/rate_ajax.js');
+
     $navigation = build_navigation('', $cm);
     print_header_simple(format_string($forum->name), "",
                  $navigation, "", "", true, $buttontext, navmenu($course, $cm));
@@ -79,7 +84,7 @@
     }
 
 /// find out current groups mode
-    groups_print_activity_menu($cm, 'view.php?id=' . $cm->id);
+    groups_print_activity_menu($cm, $CFG->wwwroot . '/mod/forum/view.php?id=' . $cm->id);
     $currentgroup = groups_get_activity_group($cm);
     $groupmode = groups_get_activity_groupmode($cm);
 
@@ -126,7 +131,7 @@
             helpbutton("subscription", $strallowchoice, "forum");
             echo '&nbsp;<span class="helplink">';
             if (has_capability('mod/forum:managesubscriptions', $context)) {
-                echo "<a title=\"$strallowchoice\" href=\"subscribe.php?id=$forum->id&amp;force=no\">$strallowchoice</a>";
+                echo "<a title=\"$strallowchoice\" href=\"subscribe.php?id=$forum->id&amp;force=no&amp;sesskey=".sesskey()."\">$strallowchoice</a>";
             } else {
                 echo $streveryoneisnowsubscribed;
             }
@@ -145,7 +150,7 @@
             echo '&nbsp;';
 
             if (has_capability('mod/forum:managesubscriptions', $context)) {
-                echo "<span class=\"helplink\"><a title=\"$strforcesubscribe\" href=\"subscribe.php?id=$forum->id&amp;force=yes\">$strforcesubscribe</a></span>";
+                echo "<span class=\"helplink\"><a title=\"$strforcesubscribe\" href=\"subscribe.php?id=$forum->id&amp;force=yes&amp;sesskey=".sesskey()."\">$strforcesubscribe</a></span>";
             } else {
                 echo '<span class="helplink">'.$streveryonecannowchoose.'</span>';
             }

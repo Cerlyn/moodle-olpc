@@ -143,49 +143,37 @@ class moodlelib_test extends UnitTestCase {
         $this->assertEqual(optional_param('username', 'default_user'), 'default_user');
     }
 
-    /**
-     * Used by {@link optional_param()} and {@link required_param()} to
-     * clean the variables and/or cast to specific types, based on
-     * an options field.
-     * <code>
-     * $course->format = clean_param($course->format, PARAM_ALPHA);
-     * $selectedgrade_item = clean_param($selectedgrade_item, PARAM_CLEAN);
-     * </code>
-     *
-     * @uses $CFG
-     * @uses PARAM_CLEAN
-     * @uses PARAM_INT
-     * @uses PARAM_INTEGER
-     * @uses PARAM_ALPHA
-     * @uses PARAM_ALPHANUM
-     * @uses PARAM_NOTAGS
-     * @uses PARAM_ALPHAEXT
-     * @uses PARAM_BOOL
-     * @uses PARAM_SAFEDIR
-     * @uses PARAM_CLEANFILE
-     * @uses PARAM_FILE
-     * @uses PARAM_PATH
-     * @uses PARAM_HOST
-     * @uses PARAM_URL
-     * @uses PARAM_LOCALURL
-     * @uses PARAM_CLEANHTML
-     * @uses PARAM_SEQUENCE
-     * @param mixed $param the variable we are cleaning
-     * @param int $type expected format of param after cleaning.
-     * @return mixed
-     */
-    function test_clean_param()
-    {
-        global $CFG;
-        // Test unknown parameter type
-        
-        // Test Raw param
-        $this->assertEqual(clean_param('#()*#,9789\'".,<42897></?$(*DSFMO#$*)(SDJ)($*)', PARAM_RAW), 
-            '#()*#,9789\'".,<42897></?$(*DSFMO#$*)(SDJ)($*)');
-        
-        $this->assertEqual(clean_param('#()*#,9789\'".,<42897></?$(*DSFMO#$*)(SDJ)($*)', PARAM_CLEAN), 
-            '#()*#,9789\\\'\".,');
+    function test_clean_param_raw() {
+        $this->assertEqual(clean_param('#()*#,9789\'".,<42897></?$(*DSFMO#$*)(SDJ)($*)', PARAM_RAW),
+                '#()*#,9789\'".,<42897></?$(*DSFMO#$*)(SDJ)($*)');
+    }
 
+    function test_clean_param_clean() {
+        $this->assertEqual(clean_param('#()*#,9789\'".,<42897></?$(*DSFMO#$*)(SDJ)($*)', PARAM_CLEAN),
+                '#()*#,9789\\\'\".,');
+    }
+
+    function test_clean_param_alpha() {
+        $this->assertEqual(clean_param('#()*#,9789\'".,<42897></?$(*DSFMO#$*)(SDJ)($*)', PARAM_ALPHA),
+                'DSFMOSDJ');
+    }
+
+    function test_clean_param_alphanum() {
+        $this->assertEqual(clean_param('#()*#,9789\'".,<42897></?$(*DSFMO#$*)(SDJ)($*)', PARAM_ALPHANUM),
+                '978942897DSFMOSDJ');
+    }
+
+    function test_clean_param_alphaext() {
+        $this->assertEqual(clean_param('#()*#,9789\'".,<42897></?$(*DSFMO#$*)(SDJ)($*)', PARAM_ALPHAEXT),
+                '/DSFMOSDJ');
+    }
+
+    function test_clean_param_sequence() {
+        $this->assertEqual(clean_param('#()*#,9789\'".,<42897></?$(*DSFMO#$*)(SDJ)($*)', PARAM_SEQUENCE),
+                ',9789,42897');
+    }
+
+    function test_clean_param_url() {
         // Test PARAM_URL and PARAM_LOCALURL a bit
         $this->assertEqual(clean_param('http://google.com/', PARAM_URL), 'http://google.com/');
         $this->assertEqual(clean_param('http://some.very.long.and.silly.domain/with/a/path/', PARAM_URL), 'http://some.very.long.and.silly.domain/with/a/path/');
@@ -193,12 +181,27 @@ class moodlelib_test extends UnitTestCase {
         $this->assertEqual(clean_param('http://0.255.1.1/numericip.php', PARAM_URL), 'http://0.255.1.1/numericip.php');
         $this->assertEqual(clean_param('/just/a/path', PARAM_URL), '/just/a/path');
         $this->assertEqual(clean_param('funny:thing', PARAM_URL), '');
+    }
 
+    function test_clean_param_localurl() {
+        global $CFG;
         $this->assertEqual(clean_param('http://google.com/', PARAM_LOCALURL), '');
         $this->assertEqual(clean_param('http://some.very.long.and.silly.domain/with/a/path/', PARAM_LOCALURL), '');
         $this->assertEqual(clean_param($CFG->wwwroot, PARAM_LOCALURL), $CFG->wwwroot);
         $this->assertEqual(clean_param('/just/a/path', PARAM_LOCALURL), '/just/a/path');
         $this->assertEqual(clean_param('funny:thing', PARAM_LOCALURL), '');
+    }
+
+    function test_clean_param_file() {
+        $this->assertEqual(clean_param('correctfile.txt', PARAM_FILE), 'correctfile.txt');
+        $this->assertEqual(clean_param('b\'a<d`\\/fi:l>e.t"x|t', PARAM_FILE), 'badfile.txt');
+        $this->assertEqual(clean_param('../parentdirfile.txt', PARAM_FILE), 'parentdirfile.txt');
+        //The following behaviours have been maintained although they seem a little odd
+        $this->assertEqual(clean_param('funny:thing', PARAM_FILE), 'funnything');
+        $this->assertEqual(clean_param('./currentdirfile.txt', PARAM_FILE), '.currentdirfile.txt');
+        $this->assertEqual(clean_param('c:\temp\windowsfile.txt', PARAM_FILE), 'ctempwindowsfile.txt');
+        $this->assertEqual(clean_param('/home/user/linuxfile.txt', PARAM_FILE), 'homeuserlinuxfile.txt');
+        $this->assertEqual(clean_param('~/myfile.txt', PARAM_FILE), '~myfile.txt');
     }
 
     function test_make_user_directory() {
@@ -219,6 +222,291 @@ class moodlelib_test extends UnitTestCase {
         $this->assertFalse(make_user_directory(true, true));
         
     }
-}
 
+    function test_shorten_text() {
+        $text = "short text already no tags";
+        $this->assertEqual($text, shorten_text($text));
+
+        $text = "<p>short <b>text</b> already</p><p>with tags</p>";
+        $this->assertEqual($text, shorten_text($text));
+
+        $text = "long text without any tags blah de blah blah blah what";
+        $this->assertEqual('long text without any tags ...', shorten_text($text));
+
+        $text = "<div class='frog'><p><blockquote>Long text with tags that will ".
+            "be chopped off but <b>should be added back again</b></blockquote></p></div>";
+        $this->assertEqual("<div class='frog'><p><blockquote>Long text with " .
+            "tags that ...</blockquote></p></div>", shorten_text($text));
+
+        $text = "some text which shouldn't &nbsp; break there";
+        $this->assertEqual("some text which shouldn't &nbsp; ...", 
+            shorten_text($text, 31));
+        $this->assertEqual("some text which shouldn't ...", 
+            shorten_text($text, 30));
+        
+        // This case caused a bug up to 1.9.5
+        $text = "<h3>standard 'break-out' sub groups in TGs?</h3>&nbsp;&lt;&lt;There are several";
+        $this->assertEqual("<h3>standard 'break-out' sub groups in ...</h3>",
+            shorten_text($text, 43));
+
+        $text = "<h1>123456789</h1>";//a string with no convenient breaks
+        $this->assertEqual("<h1>12345...</h1>",
+            shorten_text($text, 8));
+    }
+    
+    function test_usergetdate() {
+        global $USER, $CFG;
+
+        //Check if forcetimezone is set then save it and set it to use user timezone
+        $cfgforcetimezone = null;
+        if (isset($CFG->forcetimezone)) {
+            $cfgforcetimezone = $CFG->forcetimezone;
+            $CFG->forcetimezone = 99; //get user default timezone.
+        }
+
+        $userstimezone = $USER->timezone;
+        $USER->timezone = 2;//set the timezone to a known state
+
+        $ts = 1261540267; //the time this function was created
+
+        $arr = usergetdate($ts,1);//specify the timezone as an argument
+        $arr = array_values($arr);
+        
+        list($seconds,$minutes,$hours,$mday,$wday,$mon,$year,$yday,$weekday,$month) = $arr;
+        $this->assertEqual($seconds,7);
+        $this->assertEqual($minutes,51);
+        $this->assertEqual($hours,4);
+        $this->assertEqual($mday,23);
+        $this->assertEqual($wday,3);
+        $this->assertEqual($mon,12);
+        $this->assertEqual($year,2009);
+        $this->assertEqual($yday,357);
+        $this->assertEqual($weekday,'Wednesday');
+        $this->assertEqual($month,'December');
+
+        $arr = usergetdate($ts);//gets the timezone from the $USER object
+        $arr = array_values($arr);
+
+        list($seconds,$minutes,$hours,$mday,$wday,$mon,$year,$yday,$weekday,$month) = $arr;
+        $this->assertEqual($seconds,7);
+        $this->assertEqual($minutes,51);
+        $this->assertEqual($hours,5);
+        $this->assertEqual($mday,23);
+        $this->assertEqual($wday,3);
+        $this->assertEqual($mon,12);
+        $this->assertEqual($year,2009);
+        $this->assertEqual($yday,357);
+        $this->assertEqual($weekday,'Wednesday');
+        $this->assertEqual($month,'December');
+
+        //restore forcetimezone if changed.
+        if (!is_null($cfgforcetimezone)) {
+            $CFG->forcetimezone = $cfgforcetimezone;
+        }
+
+        //set the timezone back to what it was
+        $USER->timezone = $userstimezone;
+    }
+
+    public function test_userdate() {
+        global $USER, $CFG;
+
+        $testvalues = array(
+            array(
+                'time' => '1309514400',
+                'usertimezone' => 'America/Moncton',
+                'timezone' => '0.0', //no dst offset
+                'expectedoutput' => 'Friday, 1 July 2011, 10:00 AM'
+            ),
+            array(
+                'time' => '1293876000 ',
+                'usertimezone' => 'America/Moncton',
+                'timezone' => '0.0', //no dst offset
+                'expectedoutput' => 'Saturday, 1 January 2011, 10:00 AM'
+            ),
+            array(
+                'time' => '1293876000 ',
+                'usertimezone' => 'America/Moncton',
+                'timezone' => '99', //no dst offset in jan, so just timezone offset.
+                'expectedoutput' => 'Saturday, 1 January 2011, 06:00 AM'
+            ),
+            array(
+                'time' => '1293876000 ',
+                'usertimezone' => 'America/Moncton',
+                'timezone' => 'America/Moncton', //no dst offset in jan
+                'expectedoutput' => 'Saturday, 1 January 2011, 06:00 AM'
+            ),
+            array(
+                'time' => '1293876000 ',
+                'usertimezone' => '2',
+                'timezone' => '99', //take user timezone
+                'expectedoutput' => 'Saturday, 1 January 2011, 12:00 PM'
+            ),
+            array(
+                'time' => '1293876000 ',
+                'usertimezone' => '-2',
+                'timezone' => '99', //take user timezone
+                'expectedoutput' => 'Saturday, 1 January 2011, 08:00 AM'
+            ),
+            array(
+                'time' => '1293876000 ',
+                'usertimezone' => '-10',
+                'timezone' => '2', //take this timezone
+                'expectedoutput' => 'Saturday, 1 January 2011, 12:00 PM'
+            ),
+            array(
+                'time' => '1293876000 ',
+                'usertimezone' => '-10',
+                'timezone' => '-2', //take this timezone
+                'expectedoutput' => 'Saturday, 1 January 2011, 08:00 AM'
+            )
+        );
+
+        //Check if forcetimezone is set then save it and set it to use user timezone
+        $cfgforcetimezone = null;
+        if (isset($CFG->forcetimezone)) {
+            $cfgforcetimezone = $CFG->forcetimezone;
+            $CFG->forcetimezone = 99; //get user default timezone.
+        }
+        //store user default timezone to restore later
+        $userstimezone = $USER->timezone;
+
+        // The string version of date comes from server locale setting and does
+        // not respect user language, so it is necessary to reset that.
+        $oldlocale = setlocale(LC_TIME, '0');
+        setlocale(LC_TIME, 'en_AU.UTF-8');
+
+        //get instance of textlib for strtolower
+        $textlib = textlib_get_instance();
+        foreach ($testvalues as $vals) {
+            $USER->timezone = $vals['usertimezone'];
+            $actualoutput = userdate($vals['time'], '%A, %d %B %Y, %I:%M %p', $vals['timezone']);
+
+            //On different systems case of AM PM changes so compare case insenitive
+            $vals['expectedoutput'] = $textlib->strtolower($vals['expectedoutput']);
+            $actualoutput = $textlib->strtolower($actualoutput);
+
+            $this->assertEqual($vals['expectedoutput'], $actualoutput,
+                "Expected: {$vals['expectedoutput']} => Actual: {$actualoutput},
+                Please check if timezones are updated (Site adminstration -> location -> update timezone)");
+        }
+
+        //restore user timezone back to what it was
+        $USER->timezone = $userstimezone;
+
+        //restore forcetimezone
+        if (!is_null($cfgforcetimezone)) {
+            $CFG->forcetimezone = $cfgforcetimezone;
+        }
+
+        //restore system default values.
+        setlocale(LC_TIME, $oldlocale);
+    }
+
+    public function test_make_timestamp() {
+        global $USER, $CFG;
+
+        $testvalues = array(
+            array(
+                'usertimezone' => '2',//no dst applyed
+                'year' => '2011',
+                'month' => '7',
+                'day' => '1',
+                'hour' => '10',
+                'minutes' => '00',
+                'seconds' => '00',
+                'timezone' => '99', //take user timezone
+                'applydst' => true, //apply dst
+                'expectedoutput' => '1309507200'
+            ),
+            array(
+                'usertimezone' => '-2',//no dst applyed
+                'year' => '2011',
+                'month' => '7',
+                'day' => '1',
+                'hour' => '10',
+                'minutes' => '00',
+                'seconds' => '00',
+                'timezone' => '99', //take usertimezone
+                'applydst' => true, //apply dst
+                'expectedoutput' => '1309521600'
+            ),
+            array(
+                'usertimezone' => '-10',//no dst applyed
+                'year' => '2011',
+                'month' => '7',
+                'day' => '1',
+                'hour' => '10',
+                'minutes' => '00',
+                'seconds' => '00',
+                'timezone' => '2', //take this timezone
+                'applydst' => true, //apply dst
+                'expectedoutput' => '1309507200'
+            ),
+            array(
+                'usertimezone' => '-10',//no dst applyed
+                'year' => '2011',
+                'month' => '7',
+                'day' => '1',
+                'hour' => '10',
+                'minutes' => '00',
+                'seconds' => '00',
+                'timezone' => '-2', //take this timezone
+                'applydst' => true, //apply dst,
+                'expectedoutput' => '1309521600'
+            )
+        );
+
+        //Check if forcetimezone is set then save it and set it to use user timezone
+        $cfgforcetimezone = null;
+        if (isset($CFG->forcetimezone)) {
+            $cfgforcetimezone = $CFG->forcetimezone;
+            $CFG->forcetimezone = 99; //get user default timezone.
+        }
+
+        //store user default timezone to restore later
+        $userstimezone = $USER->timezone;
+
+        // The string version of date comes from server locale setting and does
+        // not respect user language, so it is necessary to reset that.
+        $oldlocale = setlocale(LC_TIME, '0');
+        setlocale(LC_TIME, 'en_AU.UTF-8');
+
+        //get instance of textlib for strtolower
+        $textlib = textlib_get_instance();
+        //Test make_timestamp with all testvals and assert if anything wrong.
+        foreach ($testvalues as $vals) {
+            $USER->timezone = $vals['usertimezone'];
+            $actualoutput = make_timestamp(
+                    $vals['year'],
+                    $vals['month'],
+                    $vals['day'],
+                    $vals['hour'],
+                    $vals['minutes'],
+                    $vals['seconds'],
+                    $vals['timezone'],
+                    $vals['applydst']
+                    );
+
+            //On different systems case of AM PM changes so compare case insenitive
+            $vals['expectedoutput'] = $textlib->strtolower($vals['expectedoutput']);
+            $actualoutput = $textlib->strtolower($actualoutput);
+
+            $this->assertEqual($vals['expectedoutput'], $actualoutput,
+                "Expected: {$vals['expectedoutput']} => Actual: {$actualoutput},
+                Please check if timezones are updated (Site adminstration -> location -> update timezone)");
+        }
+
+        //restore user timezone back to what it was
+        $USER->timezone = $userstimezone;
+
+        //restore forcetimezone
+        if (!is_null($cfgforcetimezone)) {
+            $CFG->forcetimezone = $cfgforcetimezone;
+        }
+
+        //restore system default values.
+        setlocale(LC_TIME, $oldlocale);
+    }
+}
 ?>

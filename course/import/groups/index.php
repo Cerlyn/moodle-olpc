@@ -1,4 +1,4 @@
-<?php // $Id: uploadgroups.php, 2005/10/31 19:09:31
+<?php // $Id$
 
 /// Bulk group creation registration script from a comma separated file
 
@@ -56,7 +56,7 @@
 
     require_once($CFG->dirroot.'/lib/uploadlib.php');
     $um = new upload_manager('userfile',false,false,null,false,0);
-    if ($um->preprocess_files()) {
+    if ($um->preprocess_files() and confirm_sesskey()) {
         $filename = $um->files['userfile']['tmp_name'];
 
         //Fix mac/dos newlines

@@ -61,7 +61,7 @@ class auth_plugin_db extends auth_plugin_base {
                                      WHERE {$this->config->fielduser} = '".$this->ext_addslashes($extusername)."' ");
             if (!$rs) {
                 $authdb->Close();
-                print_error('auth_dbcantconnect','auth');
+                debugging(get_string('auth_dbcantconnect','auth'));
                 return false;
             }
 
@@ -94,7 +94,7 @@ class auth_plugin_db extends auth_plugin_base {
                                   AND {$this->config->fieldpass} = '".$this->ext_addslashes($extpassword)."' ");
             if (!$rs) {
                 $authdb->Close();
-                print_error('auth_dbcantconnect','auth');
+                debugging(get_string('auth_dbcantconnect','auth'));
                 return false;
             }
 
@@ -364,7 +364,7 @@ class auth_plugin_db extends auth_plugin_base {
                 if ($old_user = get_record('user', 'username', $user->username, 'deleted', 1, 'mnethostid', $user->mnethostid)) {
                     $user->id = $old_user->id;
                     set_field('user', 'deleted', 0, 'username', $user->username);
-                    echo "\t"; print_string('auth_dbreviveuser', 'auth', array(stripslashes($user->username), $user->id)); echo "\n";
+                    echo "\t"; print_string('auth_dbreviveduser', 'auth', array(stripslashes($user->username), $user->id)); echo "\n";
                 } elseif ($id = insert_record ('user',$user)) { // it is truly a new user
                     echo "\t"; print_string('auth_dbinsertuser','auth',array(stripslashes($user->username), $id)); echo "\n";
                     // if relevant, tag for password generation
@@ -562,6 +562,13 @@ class auth_plugin_db extends auth_plugin_base {
             $this->config->changepasswordurl = '';
             set_config('changepasswordurl', '', 'auth/db');
         }
+    }
+
+    function prevent_local_passwords() {
+        if (!isset($this->config->passtype)) {
+            return false;
+        }
+        return ($this->config->passtype != 'internal');
     }
 
     /**

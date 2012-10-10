@@ -53,6 +53,9 @@
         if (quiz_has_feedback($quiz->id)) {
             $showfeedback=true;
         }
+        if($showclosingheader && $showfeedback) {
+            break;
+        }
     }
 
 // Configure table for displaying the list of instances.
@@ -78,7 +81,7 @@
         array_push($align, 'left');
         $showing = 'stats';
     } else if (has_any_capability(array('mod/quiz:reviewmyattempts', 'mod/quiz:attempt'), $coursecontext)) {
-        array_push($headings, get_string('bestgrade', 'quiz'));
+        array_push($headings, get_string('grade', 'quiz'));
         array_push($align, 'left');
         if ($showfeedback) {
             array_push($headings, get_string('feedback', 'quiz'));
@@ -144,7 +147,7 @@
             $feedback = '';
             if ($quiz->grade && !is_null($bestgrade)) {
                 if ($alloptions->scores) {
-                    $grade = "$bestgrade / $quiz->grade";
+                    $grade = round($bestgrade, $quiz->decimalpoints) . ' / ' . $quiz->grade;
                 }
                 if ($alloptions->overallfeedback) {
                     $feedback = quiz_feedback_for_grade($bestgrade, $quiz->id);

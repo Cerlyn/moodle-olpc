@@ -1966,6 +1966,25 @@ class admin_setting_configtextarea extends admin_setting_configtext {
 }
 
 /**
+ * General text area with html editor.
+ */
+class admin_setting_confightmltextarea extends admin_setting_configtext {
+
+    function admin_setting_confightmltextarea($name, $visiblename, $description, $defaultsetting, $paramtype=PARAM_RAW) {
+        parent::admin_setting_configtext($name, $visiblename, $description, $defaultsetting, $paramtype);
+    }
+
+    function output_html($data, $query='') {
+        global $CFG;
+
+        $CFG->adminusehtmleditor = can_use_html_editor();
+        $return = '<div class="form-htmlarea">'.print_textarea($CFG->adminusehtmleditor, 15, 60, 0, 0, $this->get_full_name(), $data, 0, true).'</div>';
+
+        return format_admin_setting($this, $this->visiblename, $return, $this->description, false, '', NULL, $query);
+    }
+}
+
+/**
  * Password field, allows unmasking of password
  */
 class admin_setting_configpasswordunmask extends admin_setting_configtext {
@@ -2635,7 +2654,7 @@ class admin_setting_users_with_capability extends admin_setting_configmultiselec
             '$@NONE@$' => get_string('nobody'),
             '$@ALL@$' => get_string('everyonewhocan', 'admin', get_capability_string($this->capability)),
         );
-        if ($users) {
+        if (is_array($users)) {
             foreach ($users as $user) {
                 $this->choices[$user->username] = fullname($user);
             }
@@ -5003,13 +5022,17 @@ function print_plugin_tables() {
     $installed_mods = get_records_list('modules', '', '', '', 'name');
     $installed_blocks = get_records_list('block', '', '', '', 'name');
 
+    $plugins_installed['mod'] = array();
     foreach($installed_mods as $mod) {
         $plugins_installed['mod'][] = $mod->name;
     }
 
+    $plugins_installed['blocks'] = array();
     foreach($installed_blocks as $block) {
         $plugins_installed['blocks'][] = $block->name;
     }
+
+    $plugins_installed['filter'] = array();
 
     $plugins_ondisk = array();
     $plugins_ondisk['mod'] = get_list_of_plugins('mod', 'db');

@@ -19,7 +19,7 @@
 
 function xmldb_main_upgrade($oldversion=0) {
 
-    global $CFG, $THEME, $USER, $db;
+    global $CFG, $THEME, $USER, $SITE, $db;
 
     $result = true;
 
@@ -370,7 +370,7 @@ function xmldb_main_upgrade($oldversion=0) {
         drop_index($table, $index);
         $index->setFields(array('mnethostid', 'username'));
         if (!add_index($table, $index)) {
-            notify(get_string('duplicate_usernames', 'mnet', 'http://docs.moodle.org/en/DuplicateUsernames'));
+            notify(get_string('duplicate_usernames', 'mnet', 'http://docs.moodle.org/19/en/DuplicateUsernames'));
         }
 
         unset($table, $field, $index);
@@ -1680,7 +1680,7 @@ function xmldb_main_upgrade($oldversion=0) {
         $table = new XMLDBTable('groups');
         $field = new XMLDBField('password');
 
-        if (field_exists($table, $field)) { 
+        if (field_exists($table, $field)) {
     /// 1.7.*/1.6.*/1.5.* - create 'groupings' and 'groupings_groups' + rename password to enrolmentkey
     /// or second run after fixing structure broken from 1.8.x
             $result = $result && upgrade_17_groups();
@@ -1694,7 +1694,7 @@ function xmldb_main_upgrade($oldversion=0) {
             upgrade_18_broken_groups();
             notify('Warning: failed groups upgrade detected! Unfortunately this problem '.
                    'can not be fixed automatically. Mapping of groups to courses was lost, '.
-                   'you can either revert to backup from 1.7.x and run ugprade again or '. 
+                   'you can either revert to backup from 1.7.x and run ugprade again or '.
                    'continue and fill in the missing course ids into groups table manually.');
             $result = false;
         }
@@ -1780,7 +1780,7 @@ function xmldb_main_upgrade($oldversion=0) {
                 $raw_normalized = clean_param($oldtag->text, PARAM_TAG);
                 $normalized     = moodle_strtolower($raw_normalized);
                 // if this tag does not exist in tag table yet
-                if (!$newtag = get_record('tag', 'name', $normalized, '', '', '', '', 'id')) {
+                if (!$newtag = get_record('tag', 'name', addslashes($normalized), '', '', '', '', 'id')) {
                     $itag = new object();
                     $itag->name         = $normalized;
                     $itag->rawname      = $raw_normalized;
@@ -1793,7 +1793,7 @@ function xmldb_main_upgrade($oldversion=0) {
                         $itag->tagtype  = 'default';
                     }
 
-                    if ($idx = insert_record('tag', $itag)) {
+                    if ($idx = insert_record('tag', addslashes_recursive($itag))) {
                         $tagrefs[$oldtag->id] = $idx;
                     }
                 // if this tag is already used by tag table
@@ -2355,7 +2355,7 @@ function xmldb_main_upgrade($oldversion=0) {
         $table->addKeyInfo('primary', XMLDB_KEY_PRIMARY, array('id'));
 
     /*
-     * Note: mysql can not create indexes on text fields larger than 333 chars! 
+     * Note: mysql can not create indexes on text fields larger than 333 chars!
      */
 
     /// Adding indexes to table cache_flags
@@ -2400,7 +2400,7 @@ function xmldb_main_upgrade($oldversion=0) {
         if (index_exists($table, $index)) {
             $result = $result && drop_index($table, $index);
         }
-        
+
         $table = new XMLDBTable('cache_flags');
         $index = new XMLDBIndex('flagtype');
         $index->setAttributes(XMLDB_INDEX_NOTUNIQUE, array('flagtype'));
@@ -2562,7 +2562,7 @@ function xmldb_main_upgrade($oldversion=0) {
                   FROM {$CFG->prefix}user_lastaccess
                  WHERE NOT EXISTS (SELECT 'x'
                                     FROM {$CFG->prefix}course c
-                                   WHERE c.id = {$CFG->prefix}user_lastaccess.courseid)"; 
+                                   WHERE c.id = {$CFG->prefix}user_lastaccess.courseid)";
         execute_sql($sql);
 
         upgrade_main_savepoint($result, 2007100902);
@@ -2585,16 +2585,16 @@ function xmldb_main_upgrade($oldversion=0) {
 
         upgrade_main_savepoint($result, 2007100903);
     }
-    
+
     if ($result && $oldversion < 2007101500 && !file_exists($CFG->dataroot . '/user')) {
         // Get list of users by browsing moodledata/user
         $oldusersdir = $CFG->dataroot . '/users';
         $folders = get_directory_list($oldusersdir, '', false, true, false);
-        
+
         foreach ($folders as $userid) {
             $olddir = $oldusersdir . '/' . $userid;
             $files = get_directory_list($olddir);
-            
+
             if (empty($files)) {
                 continue;
             }
@@ -2621,7 +2621,7 @@ function xmldb_main_upgrade($oldversion=0) {
         $readmefilename = $oldusersdir . '/README.txt';
         if ($handle = fopen($readmefilename, 'w+b')) {
             if (!fwrite($handle, get_string('olduserdirectory'))) {
-                // Could not write to the readme file. No cause for huge concern 
+                // Could not write to the readme file. No cause for huge concern
                 notify("Could not write to the README.txt file in $readmefilename.");
             }
             fclose($handle);
@@ -2629,22 +2629,22 @@ function xmldb_main_upgrade($oldversion=0) {
             // Could not create the readme file. No cause for huge concern
             notify("Could not create the README.txt file in $readmefilename.");
         }
-    }    
+    }
 
     if ($result && $oldversion < 2007101502) {
 
     /// try to remove duplicate entries
-    
+
         $SQL = "SELECT userid, itemid, COUNT(*)
                FROM {$CFG->prefix}grade_grades
                GROUP BY userid, itemid
                HAVING COUNT( * ) >1";
         // duplicates found
-        
+
         if ($rs = get_recordset_sql($SQL)) {
             if ($rs && $rs->RecordCount() > 0) {
                 while ($dup = rs_fetch_next_record($rs)) {
-                    if ($thisdups = get_records_sql("SELECT id FROM {$CFG->prefix}grade_grades 
+                    if ($thisdups = get_records_sql("SELECT id FROM {$CFG->prefix}grade_grades
                                                     WHERE itemid = $dup->itemid AND userid = $dup->userid
                                                     ORDER BY timemodified DESC")) {
 
@@ -2702,7 +2702,7 @@ function xmldb_main_upgrade($oldversion=0) {
         $sql = "DELETE
                   FROM {$CFG->prefix}context
                  WHERE contextlevel=20";
- 
+
         execute_sql($sql);
 
     /// Main savepoint reached
@@ -2864,7 +2864,7 @@ function xmldb_main_upgrade($oldversion=0) {
     }
 
     if ($result && $oldversion < 2007101508.04) {
-        set_field('tag_instance', 'itemtype', 'post', 'itemtype', 'blog'); 
+        set_field('tag_instance', 'itemtype', 'post', 'itemtype', 'blog');
         upgrade_main_savepoint($result, 2007101508.04);
     }
 
@@ -2941,7 +2941,7 @@ function xmldb_main_upgrade($oldversion=0) {
 
     /// Launch add field name
         $result = $result && add_field($table, $field);
- 
+
     /// Copy data from old field to new field
         $result = $result && execute_sql('UPDATE '.$CFG->prefix.'role_names SET name = text');
 
@@ -3184,6 +3184,212 @@ function xmldb_main_upgrade($oldversion=0) {
         }
         upgrade_main_savepoint($result, 2007101551);
     }
+
+    if ($result && $oldversion < 2007101561.01) {
+        // As part of security changes password policy will now be enabled by default.
+        // If it has not already been enabled then we will enable it... Admins will still
+        // be able to switch it off after this upgrade
+        if (record_exists('config', 'name', 'passwordpolicy', sql_compare_text('value'), 0)) {
+            unset_config('passwordpolicy');
+        }
+
+        $message = get_string('upgrade197notice', 'admin');
+        if (empty($CFG->passwordsaltmain)) {
+            $docspath = $CFG->docroot.'/'.str_replace('_utf8', '', current_language()).'/report/security/report_security_check_passwordsaltmain';
+            $message .= "\n".get_string('upgrade197salt', 'admin', $docspath);
+        }
+        notify($message, 'notifysuccess');
+
+        unset($message);
+
+        upgrade_main_savepoint($result, 2007101561.01);
+    }
+
+    if ($result && $oldversion < 2007101561.02) {
+        $messagesubject = s($SITE->shortname).': '.get_string('upgrade197noticesubject', 'admin');
+        $message  = '<p>'.s($SITE->fullname).' ('.s($CFG->wwwroot).'):</p>'.get_string('upgrade197notice', 'admin');
+        if (empty($CFG->passwordsaltmain)) {
+            $docspath = $CFG->docroot.'/'.str_replace('_utf8', '', current_language()).'/report/security/report_security_check_passwordsaltmain';
+            $message .= "\n".get_string('upgrade197salt', 'admin', $docspath);
+        }
+
+        // Force administrators to change password on next login
+        $systemcontext = get_context_instance(CONTEXT_SYSTEM);
+        $sql = "SELECT DISTINCT u.id, u.firstname, u.lastname, u.picture, u.imagealt, u.email, u.password, u.mailformat
+              FROM {$CFG->prefix}role_capabilities rc
+              JOIN {$CFG->prefix}role_assignments ra ON (ra.contextid = rc.contextid AND ra.roleid = rc.roleid)
+              JOIN {$CFG->prefix}user u ON u.id = ra.userid
+             WHERE rc.capability = 'moodle/site:doanything'
+                   AND rc.permission = ".CAP_ALLOW."
+                   AND u.deleted = 0
+                   AND rc.contextid = ".$systemcontext->id." AND (u.auth='manual' OR u.auth='email')";
+
+        $adminusers = get_records_sql($sql);
+        foreach ($adminusers as $adminuser) {
+            if ($preference = get_record('user_preferences', 'userid', $adminuser->id, 'name', 'auth_forcepasswordchange')) {
+                if ($preference->value == '1') {
+                    continue;
+                }
+                set_field('user_preferences', 'value', '1', 'id', $preference->id);
+            } else {
+                $preference = new stdClass;
+                $preference->userid = $adminuser->id;
+                $preference->name   = 'auth_forcepasswordchange';
+                $preference->value  = '1';
+                insert_record('user_preferences', $preference);
+            }
+            $adminuser->maildisplay = 0; // do not use return email to self, it might actually help emails to get through and prevents notices
+            // Message them with the notice about upgrading
+            email_to_user($adminuser, $adminuser, $messagesubject, html_to_text($message), $message);
+        }
+
+        unset($adminusers);
+        unset($preference);
+        unset($message);
+        unset($messagesubject);
+
+        upgrade_main_savepoint($result, 2007101561.02);
+    }
+
+    if ($result && $oldversion < 2007101563.02) {
+        // this block tries to undo incorrect forcing of new passwords for admins that have no
+        // way to change passwords MDL-20933
+        $systemcontext = get_context_instance(CONTEXT_SYSTEM);
+        $sql = "SELECT DISTINCT u.id, u.firstname, u.lastname, u.picture, u.imagealt, u.email, u.password
+                  FROM {$CFG->prefix}role_capabilities rc
+                  JOIN {$CFG->prefix}role_assignments ra ON (ra.contextid = rc.contextid AND ra.roleid = rc.roleid)
+                  JOIN {$CFG->prefix}user u ON u.id = ra.userid
+                 WHERE rc.capability = 'moodle/site:doanything'
+                       AND rc.permission = ".CAP_ALLOW."
+                       AND u.deleted = 0
+                       AND rc.contextid = ".$systemcontext->id." AND u.auth<>'manual' AND u.auth<>'email'";
+
+        if ($adminusers = get_records_sql($sql)) {
+            foreach ($adminusers as $adminuser) {
+                delete_records('user_preferences', 'userid', $adminuser->id, 'name', 'auth_forcepasswordchange');
+            }
+        }
+        unset($adminusers);
+
+        upgrade_main_savepoint($result, 2007101563.02);
+    }
+
+    if ($result && $oldversion < 2007101563.03) {
+        // NOTE: this is quite hacky, but anyway it should work fine in 1.9,
+        //       in 2.0 we should always use plugin upgrade code for things like this
+
+        $authsavailable = get_list_of_plugins('auth');
+        foreach($authsavailable as $authname) {
+            if (!$auth = get_auth_plugin($authname)) {
+                continue;
+            }
+            if ($auth->prevent_local_passwords()) {
+                execute_sql("UPDATE {$CFG->prefix}user SET password='not cached' WHERE auth='$authname'");
+            }
+        }
+
+        upgrade_main_savepoint($result, 2007101563.03);
+    }
+
+    if ($result && $oldversion < 2007101571.01) {
+        // Remove category_sortorder index that was supposed to be removed long time ago
+        $table = new XMLDBTable('course');
+        $index = new XMLDBIndex('category_sortorder');
+        $index->setAttributes(XMLDB_INDEX_UNIQUE, array('category', 'sortorder'));
+
+        if (index_exists($table, $index)) {
+            drop_index($table, $index);
+        }
+
+        // MDL-21011 bring down course sort orders away from maximum values
+        $sql = "SELECT id, category, sortorder from {$CFG->prefix}course
+                ORDER BY sortorder ASC;";
+        if ($courses = get_recordset_sql($sql)) {
+            $i=1000;
+            $old_category = 0;
+            while ($course = rs_fetch_next_record($courses)) {
+                if($course->category!=$old_category) {
+                    //increase i to put a gap between courses in different categories
+                    //don't think we need to but they had one before
+                    $i += 1000;
+                    $old_category = $course->category;
+                }
+                set_field('course', 'sortorder', $i++, 'id', $course->id);
+            }
+            rs_close($courses);
+        }
+        unset($courses);
+
+        upgrade_main_savepoint($result, 2007101571.01);
+    }
+
+    if ($result && $oldversion < 2007101571.02) {
+        upgrade_fix_incorrect_mnethostids();
+        upgrade_main_savepoint($result, 2007101571.02);
+    }
+
+    /// MDL-17863. Increase the portno column length on mnet_host to handle any port number
+    if ($result && $oldversion < 2007101571.03) {
+        $table = new XMLDBTable('mnet_host');
+        $field = new XMLDBField('portno');
+        $field->setAttributes(XMLDB_TYPE_INTEGER, '5', true, true, null, false, false, 0);
+        $result = change_field_precision($table, $field);
+        upgrade_main_savepoint($result, 2007101571.03);
+    }
+
+    // MDL-21407. Trim leading spaces from default tex latexpreamble causing problems under some confs
+    if ($result && $oldversion < 2007101571.04) {
+        if ($preamble = $CFG->filter_tex_latexpreamble) {
+            $preamble = preg_replace('/^ +/m', '', $preamble);
+            set_config('filter_tex_latexpreamble', $preamble);
+        }
+        upgrade_main_savepoint($result, 2007101571.04);
+    }
+
+    if ($result && $oldversion < 2007101571.05) {
+        // make the session regeneration setting enabled by default
+        if (empty($CFG->regenloginsession)) {
+            unset_config('regenloginsession');
+        }
+        upgrade_main_savepoint($result, 2007101571.05);
+    }
+
+    if ($result && $oldversion < 2007101590.01) {
+        // add media plugins config for ogg and ogv files
+        set_config('filter_mediaplugin_enable_ogv', 1);
+        set_config('filter_mediaplugin_enable_ogg', 1);
+        upgrade_main_savepoint($result, 2007101590.01);
+    }
+
+    if ($result && $oldversion < 2007101591.01) {
+
+    /// Define index userfieldidx (not unique) to be added to user_info_data
+        $table = new XMLDBTable('user_info_data');
+        $index = new XMLDBIndex('userfieldidx');
+        $index->setAttributes(XMLDB_INDEX_NOTUNIQUE, array('userid', 'fieldid'));
+
+    /// Launch add index userfieldidx
+        if (!index_exists($table, $index)) {
+            $result = $result && add_index($table, $index);
+        }
+
+    /// Main savepoint reached
+        upgrade_main_savepoint($result, 2007101591.01);
+    }
+
+    if ($result && $oldversion < 2007101591.05) {
+        // Remove category_sortorder index that was supposed to be removed long time ago
+        $table = new XMLDBTable('course');
+        $index = new XMLDBIndex('category_sortorder');
+        $index->setAttributes(XMLDB_INDEX_UNIQUE, array('category', 'sortorder'));
+
+        if (index_exists($table, $index)) {
+            drop_index($table, $index);
+        }
+        upgrade_main_savepoint($result, 2007101591.05);
+    }
+
+
     return $result;
 }
 

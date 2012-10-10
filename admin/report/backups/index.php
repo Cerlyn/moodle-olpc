@@ -38,7 +38,7 @@
     $strcourse = get_string("course");
     $strtimetaken = get_string("timetaken","quiz");
     $strstatus = get_string("status");
-    $strnext = get_string("next");
+    $strnext = get_string("backupnext");
 
 /// Decide when to show last execution logs or detailed logs
 /// Lastlog view
@@ -93,7 +93,7 @@
         print_simple_box_start('center');
 
     /// First, me get all the distinct backups for that course in backup_log
-        $executions = get_records_sql("SELECT DISTINCT laststarttime,laststarttime
+        $executions = get_records_sql("SELECT DISTINCT laststarttime
                                        FROM {$CFG->prefix}backup_log
                                        WHERE courseid = '$courseid'
                                        ORDER BY laststarttime DESC");

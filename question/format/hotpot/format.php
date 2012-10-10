@@ -12,6 +12,7 @@
  * @package questionbank
  * @subpackage importexport
  */
+require_once($CFG->dirroot . '/mod/hotpot/lib.php');
 
 class qformat_hotpot extends qformat_default {
 
@@ -41,7 +42,7 @@ class qformat_hotpot extends qformat_default {
                 break;
             default:
                 // shouldn't happen !!
-                $courseid = 0; 
+                $courseid = 0;
         }
         require_once($CFG->libdir.'/filelib.php');
         $baseurl = get_file_url($courseid).'/';
@@ -80,7 +81,12 @@ class qformat_hotpot extends qformat_default {
         $questions = array();
         switch ($xml->quiztype) {
             case 'jcloze':
-                $this->process_jcloze($xml, $questions);
+                if (strpos($source, '<gap-fill><question-record>')) {
+                    $startwithgap = true;
+                } else {
+                    $startwithgap = false;
+                }
+                $this->process_jcloze($xml, $questions, $startwithgap);
                 break;
             case 'jcross':
                 $this->process_jcross($xml, $questions);
@@ -113,7 +119,7 @@ class qformat_hotpot extends qformat_default {
         }
     }
 
-    function process_jcloze(&$xml, &$questions) {
+    function process_jcloze(&$xml, &$questions, $startwithgap) {
         // define default grade (per cloze gap)
         $defaultgrade = 1;
         $gap_count = 0;
@@ -143,10 +149,27 @@ class qformat_hotpot extends qformat_default {
                 $question->usecase = 0; // Ignore case
                 $question->image = "";  // No images with this format
             }
-            $question->qtype = MULTIANSWER;
 
+            $question->qtype = MULTIANSWER;
             $question->name = $this->hotpot_get_title($xml, $x);
-            $question->questiontext = $this->hotpot_get_reading($xml);
+            $question->questiontext = '';
+
+            // add get dropdown list, if any
+            if (intval($xml->xml_value('hotpot-config-file,'.$xml->quiztype.',use-drop-down-list'))) {
+                $dropdownlist = $this->hotpot_jcloze_wordlist($xml);
+                $answertype = MULTICHOICE;
+            } else {
+                $dropdownlist = false;
+                $answertype = SHORTANSWER;
+
+                // add wordlist, if required (not required if we are using dropdowns)
+                if (intval($xml->xml_value('hotpot-config-file,'.$xml->quiztype.',include-word-list'))) {
+                    $question->questiontext .= '<p>'.implode(' ', $this->hotpot_jcloze_wordlist($xml)).'</p>';
+                }
+            }
+
+            // add reading, if any
+            $question->questiontext .= $this->hotpot_get_reading($xml);
 
             // setup answer arrays
             if ($moodle_14) {
@@ -159,71 +182,130 @@ class qformat_hotpot extends qformat_default {
             }
 
             $q = 0;
-            while ($text = $xml->xml_value($tags, $exercise."[$q]")) {
-                // add next bit of text
-                $question->questiontext .= $this->hotpot_prepare_str($text);
+            $looping = true;
+            while ($looping) {
+                // get next bit of text
+                $questiontext = $xml->xml_value($tags, $exercise."[$q]");
+                $questiontext = $this->hotpot_prepare_str($questiontext);
 
-                // check for a gap
+                // get next gap
+                $gap = '';
                 $question_record = $exercise."['question-record'][$q]['#']";
                 if ($xml->xml_value($tags, $question_record)) {
 
                     // add gap
                     $gap_count ++;
                     $positionkey = $q+1;
-                    $question->questiontext .= '{#'.$positionkey.'}';
-        
+                    $gap = '{#'.$positionkey.'}';
+
                     // initialize answer settings
                     if ($moodle_14) {
                         $question->answers[$q]->positionkey = $positionkey;
-                        $question->answers[$q]->answertype = SHORTANSWER;
+                        $question->answers[$q]->answertype = $answertype;
                         $question->answers[$q]->norm = $defaultgrade;
                         $question->answers[$q]->alternatives = array();
                     } else {
                         $wrapped = new stdClass();
-                        $wrapped->qtype = SHORTANSWER;
+                        $wrapped->qtype = $answertype;
                         $wrapped->usecase = 0;
                         $wrapped->defaultgrade = $defaultgrade;
                         $wrapped->questiontextformat = 0;
                         $wrapped->answer = array();
                         $wrapped->fraction = array();
                         $wrapped->feedback = array();
+                        // required for multichoice
+                        $wrapped->single = 1;
+                        $wrapped->answernumbering = 0;
+                        $wrapped->shuffleanswers = 0;
+                        $wrapped->correctfeedback = '';
+                        $wrapped->partiallycorrectfeedback = '';
+                        $wrapped->incorrectfeedback = '';
+                        // array of answers
                         $answers = array();
                     }
-        
+
                     // add answers
-                    $a = 0;
-                    while (($answer=$question_record."['answer'][$a]['#']") && $xml->xml_value($tags, $answer)) {
-                        $text = $this->hotpot_prepare_str($xml->xml_value($tags,  $answer."['text'][0]['#']"));
-                        $correct = $xml->xml_value($tags,  $answer."['correct'][0]['#']");
-                        $feedback = $this->hotpot_prepare_str($xml->xml_value($tags,  $answer."['feedback'][0]['#']"));
-                        if (strlen($text)) {
-                            // set score (0=0%, 1=100%)
-                            $fraction = empty($correct) ? 0 : 1;
-                            // store answer
+                    if ($dropdownlist) {
+
+                        $a = 0;
+                        $correcttext = '';
+                        $correctfeedback = '';
+                        while (($answer=$question_record."['answer'][$a]['#']") && $xml->xml_value($tags, $answer)) {
+                            if (intval($xml->xml_value($tags,  $answer."['correct'][0]['#']"))) {
+                                $correcttext = $this->hotpot_prepare_str($xml->xml_value($tags,  $answer."['text'][0]['#']"));
+                                $correctfeedback = $this->hotpot_prepare_str($xml->xml_value($tags,  $answer."['feedback'][0]['#']"));
+                                break;
+                            }
+                            $a++;
+                        }
+
+                        foreach ($dropdownlist as $a => $answer) {
+                            if ($answer==$correcttext) {
+                                $fraction = 1;
+                                $feedback = $correctfeedback;
+                            } else {
+                                $fraction = 0;
+                                $feedback = '';
+                            }
                             if ($moodle_14) {
                                 $question->answers[$q]->alternatives[$a] = new stdClass();
-                                $question->answers[$q]->alternatives[$a]->answer = $text;
+                                $question->answers[$q]->alternatives[$a]->answer = $answer;
                                 $question->answers[$q]->alternatives[$a]->fraction = $fraction;
                                 $question->answers[$q]->alternatives[$a]->feedback = $feedback;
                             } else {
-                                $wrapped->answer[] = $text;
+                                $wrapped->answer[] = $answer;
                                 $wrapped->fraction[] = $fraction;
                                 $wrapped->feedback[] = $feedback;
-                                $answers[] = (empty($fraction) ? '' : '=').$text.(empty($feedback) ? '' : ('#'.$feedback));
+                                $answers[] = ($fraction==0 ? '' : '=').$answer.($feedback=='' ? '' : ('#'.$feedback));
                             }
                         }
-                        $a++;
+                    } else {
+                        $a = 0;
+                        while (($answer=$question_record."['answer'][$a]['#']") && $xml->xml_value($tags, $answer)) {
+                            $text = $this->hotpot_prepare_str($xml->xml_value($tags,  $answer."['text'][0]['#']"));
+                            $correct = $xml->xml_value($tags,  $answer."['correct'][0]['#']");
+                            $feedback = $this->hotpot_prepare_str($xml->xml_value($tags,  $answer."['feedback'][0]['#']"));
+                            if (strlen($text)) {
+                                // set score (0=0%, 1=100%)
+                                $fraction = empty($correct) ? 0 : 1;
+                                // store answer
+                                if ($moodle_14) {
+                                    $question->answers[$q]->alternatives[$a] = new stdClass();
+                                    $question->answers[$q]->alternatives[$a]->answer = $text;
+                                    $question->answers[$q]->alternatives[$a]->fraction = $fraction;
+                                    $question->answers[$q]->alternatives[$a]->feedback = $feedback;
+                                } else {
+                                    $wrapped->answer[] = $text;
+                                    $wrapped->fraction[] = $fraction;
+                                    $wrapped->feedback[] = $feedback;
+                                    $answers[] = (empty($fraction) ? '' : '=').$text.(empty($feedback) ? '' : ('#'.$feedback));
+                                }
+                            }
+                            $a++;
+                        }
                     }
+
                     // compile answers into question text, if necessary
                     if ($moodle_14) {
                         // do nothing
                     } else {
-                        $wrapped->questiontext = '{'.$defaultgrade.':SHORTANSWER:'.implode('~', $answers).'}';
+                        $wrapped->questiontext = '{'.$defaultgrade.':'.$answertype.':'.implode('~', $answers).'}';
                         $question->options->questions[] = $wrapped;
                     }
                 } // end if gap
+
+                if (strlen($questiontext) || strlen($gap)) {
+                    if ($startwithgap) {
+                        $question->questiontext .= $gap.$questiontext;
+                    } else {
+                        $question->questiontext .= $questiontext.$gap;
+                    }
+                } else {
+                    $looping = false;
+                }
+
                 $q++;
-            } // end while $text
+            } // end while $looping
 
             if ($q) {
                 // define total grade for this exercise
@@ -238,6 +320,32 @@ class qformat_hotpot extends qformat_default {
 
             $x++;
         } // end while $exercise
+    }
+
+    function hotpot_jcloze_wordlist(&$xml) {
+        $wordlist = array();
+
+        $q = 0;
+        $tags = 'data,gap-fill,question-record';
+        while (($question="[$q]['#']") && $xml->xml_value($tags, $question)) {
+            $a = 0;
+            $aa = 0;
+            while (($answer=$question."['answer'][$a]['#']") && $xml->xml_value($tags, $answer)) {
+                $text = $xml->xml_value($tags,  $answer."['text'][0]['#']");
+                $correct = $xml->xml_value($tags, $answer."['correct'][0]['#']");
+                if (strlen($text) && intval($correct)) {
+                    $wordlist[] = $text;
+                    $aa++;
+                }
+                $a++;
+            }
+            $q++;
+        }
+
+        $wordlist = array_unique($wordlist);
+        sort($wordlist);
+
+        return $wordlist;
     }
 
     function process_jcross(&$xml, &$questions) {
@@ -487,7 +595,7 @@ class qformat_hotpot extends qformat_default {
                     $a++;
                 }
                 if ($correct_answers_all_zero) {
-                    // correct answers all have score of 0%, 
+                    // correct answers all have score of 0%,
                     // so reset score for correct answers 100%
                     foreach ($correct_answers as $aa) {
                         $question->fraction[$aa] = 1;
@@ -519,7 +627,7 @@ class qformat_hotpot extends qformat_default {
         return $this->hotpot_prepare_str($title);
     }
     function hotpot_get_instructions(&$xml) {
-        $text = $xml->xml_value('hotpot-config-file,instructions');
+        $text = $xml->xml_value('hotpot-config-file,'.$xml->quiztype.',instructions');
         if (empty($text)) {
             $text = "Hot Potatoes $xml->quiztype";
         }
@@ -530,146 +638,37 @@ class qformat_hotpot extends qformat_default {
         $tags = 'data,reading';
         if ($xml->xml_value("$tags,include-reading")) {
             if ($title = $xml->xml_value("$tags,reading-title")) {
-                $str .= "<H3>$title</H3>";
+                $str .= "<h3>$title</h3>";
             }
             if ($text = $xml->xml_value("$tags,reading-text")) {
-                $str .= "<P>$text</P>";
+                $str .= "<p>$text</p>";
             }
         }
         return $this->hotpot_prepare_str($str);
     }
     function hotpot_prepare_str($str) {
         // convert html entities to unicode and add slashes
-        $str = preg_replace('/&#x([0-9a-f]+);/ie', "hotpot_charcode_to_utf8(hexdec('\\1'))", $str);
-        $str = preg_replace('/&#([0-9]+);/e', "hotpot_charcode_to_utf8(\\1)", $str);
+        $str = preg_replace_callback('/&#([0-9]+);/', array(&$this, 'hotpot_prepare_str_dec'), $str);
+        $str = preg_replace_callback('/&#x([0-9a-f]+);/i', array(&$this, 'hotpot_prepare_str_hexdec'), $str);
         return addslashes($str);
+    }
+    function hotpot_prepare_str_dec(&$matches) {
+        return hotpot_charcode_to_utf8($matches[1]);
+    }
+    function hotpot_prepare_str_hexdec(&$matches) {
+        return hotpot_charcode_to_utf8(hexdec($matches[1]));
     }
 } // end class
 
-// get the standard XML parser supplied with Moodle
-require_once("$CFG->libdir/xmlize.php");
-
-class hotpot_xml_tree {
-    function hotpot_xml_tree($str, $xml_root='') {
-        if (empty($str)) {
-            $this->xml =  array();
-        } else {
-            // encode htmlentities in JCloze
-            $this->encode_cdata($str, 'gap-fill');
-            // xmlize (=convert xml to tree)
-            $this->xml =  xmlize($str, 0);
-        }
-        $this->xml_root = $xml_root;
-    }
-    function xml_value($tags, $more_tags="[0]['#']") {
-
-        $value = null;
-        if (isset($this->xml) && is_array($this->xml)) {
-
-            $all_tags = $this->xml_root;
-            if ($tags) {
-                $all_tags .= "['".str_replace(",", "'][0]['#']['", $tags)."']";
-            }
-            $all_tags .= $more_tags;
-
-            $pos = strrpos($all_tags, '[');
-            if ($pos===false) {
-                $most_tags = ''; // shouldn't happen !!
-            } else {
-                $most_tags = substr($all_tags, 0, $pos);
-            }
-
-            eval('if (isset($this->xml'.$most_tags.') && is_array($this->xml'.$most_tags.') && isset($this->xml'.$all_tags.')) {'
-                    .'$value = &$this->xml'.$all_tags.';'
-                .'} else {'
-                    .'$value = null;'
-                .'}'
-            );
-        }
-
-        if (is_string($value)) {
-
-            // decode angle brackets and ampersands
-            $value = strtr($value, array('&#x003C;'=>'<', '&#x003E;'=>'>', '&#x0026;'=>'&'));
-
-            // remove white space between <table>, <ul|OL|DL> and <OBJECT|EMBED> parts 
-            // (so it doesn't get converted to <br />)
-            $htmltags = '('
-            .    'TABLE|/?CAPTION|/?COL|/?COLGROUP|/?TBODY|/?TFOOT|/?THEAD|/?TD|/?TH|/?TR'
-            .    '|OL|UL|/?LI'
-            .    '|DL|/?DT|/?DD'
-            .    '|EMBED|OBJECT|APPLET|/?PARAM'
-            //.    '|SELECT|/?OPTION'
-            //.    '|FIELDSET|/?LEGEND'
-            //.    '|FRAMESET|/?FRAME'
-            .    ')'
-            ;
-            $search = '#(<'.$htmltags.'[^>]*'.'>)\s+'.'(?='.'<'.')#is';
-            $value = preg_replace($search, '\\1', $value);
-
-            // replace remaining newlines with <br />
-            $value = str_replace("\n", '<br />', $value);
-
-            // encode unicode characters as HTML entities
-            // (in particular, accented charaters that have not been encoded by HP)
-
-            // multibyte unicode characters can be detected by checking the hex value of the first character
-            //    00 - 7F : ascii char (roman alphabet + punctuation)
-            //    80 - BF : byte 2, 3 or 4 of a unicode char
-            //    C0 - DF : 1st byte of 2-byte char
-            //    E0 - EF : 1st byte of 3-byte char
-            //    F0 - FF : 1st byte of 4-byte char
-            // if the string doesn't match the above, it might be
-            //    80 - FF : single-byte, non-ascii char
-            $search = '#('.'[\xc0-\xdf][\x80-\xbf]'.'|'.'[\xe0-\xef][\x80-\xbf]{2}'.'|'.'[\xf0-\xff][\x80-\xbf]{3}'.'|'.'[\x80-\xff]'.')#se';
-            $value = preg_replace($search, "hotpot_utf8_to_html_entity('\\1')", $value);
-        }
-        return $value;
-    }
-    function encode_cdata(&$str, $tag) {
-
-        // conversion tables
-        static $HTML_ENTITIES = array(
-            '&apos;' => "'",
-            '&quot;' => '"',
-            '&lt;'   => '<',
-            '&gt;'   => '>',
-            '&amp;'  => '&',
-        );
-        static $ILLEGAL_STRINGS = array(
-            "\r"  => '',
-            "\n"  => '&lt;br /&gt;',
-            ']]>' => '&#93;&#93;&#62;',
-        );
-
-        // extract the $tag from the $str(ing), if possible
-        $pattern = '|(^.*<'.$tag.'[^>]*)(>.*<)(/'.$tag.'>.*$)|is';
-        if (preg_match($pattern, $str, $matches)) {
-
-            // encode problematic CDATA chars and strings
-            $matches[2] = strtr($matches[2], $ILLEGAL_STRINGS);
-
-
-            // if there are any ampersands in "open text"
-            // surround them by CDATA start and end markers
-            // (and convert HTML entities to plain text)
-            $search = '/>([^<]*&[^<]*)</e';
-            $replace = '"><![CDATA[".strtr("$1", $HTML_ENTITIES)."]]><"';
-            $matches[2] = preg_replace($search, $replace, $matches[2]);
-
-            $str = $matches[1].$matches[2].$matches[3];
-        }
-    }
-}
-
 function hotpot_charcode_to_utf8($charcode) {
+    // thanks to Miguel Perez: http://jp2.php.net/chr (19-Sep-2007)
     if ($charcode <= 0x7F) {
         // ascii char (roman alphabet + punctuation)
         return chr($charcode);
     }
     if ($charcode <= 0x7FF) {
         // 2-byte char
-        return chr(($charcode >> 0x06) + 0xC0).chr(($charcode & 0x3F) + 128);
+        return chr(($charcode >> 0x06) + 0xC0).chr(($charcode & 0x3F) + 0x80);
     }
     if ($charcode <= 0xFFFF) {
         // 3-byte char
@@ -680,34 +679,7 @@ function hotpot_charcode_to_utf8($charcode) {
         return chr(($charcode >> 0x12) + 0xF0).chr((($charcode >> 0x0C) & 0x3F) + 0x80).chr((($charcode >> 0x06) & 0x3F) + 0x80).chr(($charcode & 0x3F) + 0x80);
     }
     // unidentified char code !!
-    return ' '; 
-}
-
-function hotpot_utf8_to_html_entity($char) {
-    // http://www.zend.com/codex.php?id=835&single=1
-
-    // array used to figure what number to decrement from character order value 
-    // according to number of characters used to map unicode to ascii by utf-8 
-    static $HOTPOT_UTF8_DECREMENT = array(
-        1=>0, 2=>192, 3=>224, 4=>240
-    );
-
-    // the number of bits to shift each character by 
-    static $HOTPOT_UTF8_SHIFT = array(
-        1=>array(0=>0),
-        2=>array(0=>6,  1=>0),
-        3=>array(0=>12, 1=>6,  2=>0),
-        4=>array(0=>18, 1=>12, 2=>6, 3=>0)
-    );
-     
-    $dec = 0; 
-    $len = strlen($char);
-    for ($pos=0; $pos<$len; $pos++) {
-        $ord = ord ($char{$pos});
-        $ord -= ($pos ? 128 : $HOTPOT_UTF8_DECREMENT[$len]); 
-        $dec += ($ord << $HOTPOT_UTF8_SHIFT[$len][$pos]); 
-    }
-    return '&#x'.sprintf('%04X', $dec).';';
+    return ' ';
 }
 
 function hotpot_convert_relative_urls($str, $baseurl, $filename) {
@@ -729,110 +701,19 @@ function hotpot_convert_relative_urls($str, $baseurl, $filename) {
         } else {
             $url = '.*?';
         }
-        $search = "%($tagopen$tag$space$anychar$attribute=$quoteopen)($url)($quoteclose$anychar$tagclose)%ise";
-        $str = preg_replace($search, $replace, $str);
+        $search = "/($tagopen$tag$space$anychar$attribute=$quoteopen)($url)($quoteclose$anychar$tagclose)/is";
+        if (preg_match_all($search, $str, $matches, PREG_OFFSET_CAPTURE)) {
+            $i_max = count($matches[0]) - 1;
+            for ($i=$i_max; $i>=0; $i--) {
+                $match = $matches[0][$i][0];
+                $start = $matches[0][$i][1];
+                $replace = hotpot_convert_relative_url(
+                    $baseurl, $filename, $matches[1][$i][0], $matches[6][$i][0], $matches[7][$i][0], false
+                );
+                $str = substr_replace($str, $replace, $start, strlen($match));
+            }
+        }
     }
 
     return $str;
 }
-
-function hotpot_convert_relative_url($baseurl, $filename, $opentag, $url, $closetag, $stripslashes=true) {
-    if ($stripslashes) {
-        $opentag = stripslashes($opentag);
-        $url = stripslashes($url);
-        $closetag = stripslashes($closetag);
-    }
-
-    // catch <PARAM name="FlashVars" value="TheSound=soundfile.mp3">
-    //    ampersands can appear as "&", "&amp;" or "&amp;#x0026;amp;"
-    if (preg_match('|^'.'\w+=[^&]+'.'('.'&((amp;#x0026;)?amp;)?'.'\w+=[^&]+)*'.'$|', $url)) {
-        $query = $url;
-        $url = '';
-        $fragment = '';
-
-    // parse the $url into $matches
-    //    [1] path
-    //    [2] query string, if any
-    //    [3] anchor fragment, if any
-    } else if (preg_match('|^'.'([^?]*)'.'((?:\\?[^#]*)?)'.'((?:#.*)?)'.'$|', $url, $matches)) {
-        $url = $matches[1];
-        $query = $matches[2];
-        $fragment = $matches[3];
-
-    // there appears to be no query or fragment in this url
-    } else {
-        $query = '';
-        $fragment = '';
-    }
-
-    if ($url) {
-        $url = hotpot_convert_url($baseurl, $filename, $url, false);
-    }
-
-    if ($query) {
-        $search = '#'.'(file|src|thesound)='."([^&]+)".'#ise';
-        $replace = "'\\1='.hotpot_convert_url('".$baseurl."','".$filename."','\\2')";
-        $query = preg_replace($search, $replace, $query);
-    }
-
-    $url = $opentag.$url.$query.$fragment.$closetag;
-
-    return $url;
-}
-
-function hotpot_convert_url($baseurl, $filename, $url, $stripslashes=true) {
-    // maintain a cache of converted urls
-    static $HOTPOT_RELATIVE_URLS = array();
-
-    if ($stripslashes) {
-        $url = stripslashes($url);
-    }
-
-    // is this an absolute url? (or javascript pseudo url)
-    if (preg_match('%^(http://|/|javascript:)%i', $url)) {
-        // do nothing
-
-    // has this relative url already been converted?
-    } else if (isset($HOTPOT_RELATIVE_URLS[$url])) {
-        $url = $HOTPOT_RELATIVE_URLS[$url];
-
-    } else {
-        $relativeurl = $url;
-
-        // get the subdirectory, $dir, of the quiz $filename
-        $dir = dirname($filename);
-
-        // allow for leading "./" and "../"
-        while (preg_match('|^(\.{1,2})/(.*)$|', $url, $matches)) {
-            if ($matches[1]=='..') {
-                $dir = dirname($dir);
-            }
-            $url = $matches[2];
-        }
-
-        // add subdirectory, $dir, to $baseurl, if necessary
-        if ($dir && $dir<>'.') {
-            $baseurl .= "$dir/";
-        }
-
-        // prefix $url with $baseurl
-        $url = "$baseurl$url";
-
-        // add url to cache
-        $HOTPOT_RELATIVE_URLS[$relativeurl] = $url;
-    }
-    return $url;
-}
-
-// allow importing in Moodle v1.4 (and less)
-// same core functions but different class name
-if (!class_exists("quiz_file_format")) {
-    class quiz_file_format extends qformat_default {
-        function readquestions ($lines) {
-            $format = new qformat_hotpot();
-            return $format->readquestions($lines);
-        }
-    }
-}
-
-?>

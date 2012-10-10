@@ -1,4 +1,4 @@
-<?php  // $Id: lesson.php, v 1.0 25 Jan 2004
+<?php  // $Id$
 /**
  * Handles lesson actions
  * 
@@ -29,7 +29,7 @@
     
     list($cm, $course, $lesson) = lesson_get_basics($id);
 
-    require_login($course->id);
+    require_login($course, false, $cm);
     $context = get_context_instance(CONTEXT_MODULE, $cm->id);
     
 /// Set up some general variables

@@ -6,7 +6,7 @@
  * @license http://www.gnu.org/copyleft/gpl.html GNU Public License
  * @package lesson
  **/
-    confirm_sesskey();
+    require_sesskey();
     
     $redirect = optional_param('redirect', '', PARAM_ALPHA);
 
@@ -71,7 +71,8 @@
                 }
             }
         }        
-        if (!update_record("lesson_answers", $oldanswer)) {
+        // Don't return the error if it wasn't updated because original question type had no answers
+        if (!empty($oldanswer->id) && !update_record("lesson_answers", $oldanswer)) {
             error("Update page: EOB not updated");
         }
     } else {

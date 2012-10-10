@@ -5,7 +5,7 @@ define('BYTESERVING_BOUNDARY', 's1k2o3d4a5k6s7'); //unique string constant
 function get_file_url($path, $options=null, $type='coursefile') {
     global $CFG, $HTTPSPAGEREQUIRED;
 
-    $path = str_replace('//', '/', $path);  
+    $path = str_replace('//', '/', $path);
     $path = trim($path, '/'); // no leading and trailing slashes
 
     // type of file
@@ -175,11 +175,10 @@ function download_file_content($url, $headers=null, $postdata=null, $fullrespons
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers2);
     }
 
-        
     if ($skipcertverify) {
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     }
-    
+
     // use POST if requested
     if (is_array($postdata)) {
         foreach ($postdata as $k=>$v) {
@@ -404,6 +403,8 @@ function get_mimetypes_array() {
         'odf'  => array ('type'=>'application/vnd.oasis.opendocument.formula', 'icon'=>'odf.gif'),
         'odb'  => array ('type'=>'application/vnd.oasis.opendocument.database', 'icon'=>'odb.gif'),
         'odi'  => array ('type'=>'application/vnd.oasis.opendocument.image', 'icon'=>'odi.gif'),
+        'ogg'  => array ('type'=>'audio/ogg', 'icon'=>'audio.gif'),
+        'ogv'  => array ('type'=>'video/ogg', 'icon'=>'video.gif'),
 
         'pct'  => array ('type'=>'image/pict', 'icon'=>'image.gif'),
         'pdf'  => array ('type'=>'application/pdf', 'icon'=>'pdf.gif'),
@@ -506,7 +507,7 @@ function mimeinfo($element, $filename) {
         $mimeinfo = get_mimetypes_array();
     }
 
-    if (eregi('\.([a-z0-9]+)$', $filename, $match)) {
+    if (preg_match('/\.([a-zA-Z0-9]+)$/', $filename, $match)) {
         if (isset($mimeinfo[strtolower($match[1])][$element])) {
             return $mimeinfo[strtolower($match[1])][$element];
         } else {
@@ -662,7 +663,7 @@ function send_temp_file_finished($path) {
  * @param string $mimetype Include to specify the MIME type; leave blank to have it guess the type from $filename
  */
 function send_file($path, $filename, $lifetime = 'default' , $filter=0, $pathisstring=false, $forcedownload=false, $mimetype='') {
-    global $CFG, $COURSE;
+    global $CFG, $COURSE, $SESSION;
 
     // MDL-11789, apply $CFG->filelifetime here
     if ($lifetime === 'default') {
@@ -679,6 +680,21 @@ function send_file($path, $filename, $lifetime = 'default' , $filter=0, $pathiss
     $isFF         = check_browser_version('Firefox', '1.5'); // only FF > 1.5 properly tested
     $mimetype     = ($forcedownload and !$isFF) ? 'application/x-forcedownload' :
                          ($mimetype ? $mimetype : mimeinfo('type', $filename));
+
+    // If the file is a Flash file and that the user flash player is outdated return a flash upgrader MDL-20841
+    if (!empty($CFG->excludeoldflashclients) && $mimetype == 'application/x-shockwave-flash'&& !empty($SESSION->flashversion)) {
+        $userplayerversion = explode('.', $SESSION->flashversion);
+        $requiredplayerversion = explode('.', $CFG->excludeoldflashclients);
+        if (($userplayerversion[0] <  $requiredplayerversion[0]) ||
+            ($userplayerversion[0] == $requiredplayerversion[0] && $userplayerversion[1] < $requiredplayerversion[1]) ||
+            ($userplayerversion[0] == $requiredplayerversion[0] && $userplayerversion[1] == $requiredplayerversion[1]
+             && $userplayerversion[2] < $requiredplayerversion[2])) {
+            $path = $CFG->dirroot."/lib/flashdetect/flashupgrade.swf";  // Alternate content asking user to upgrade Flash
+            $filename = "flashupgrade.swf";
+            $lifetime = 0;  // Do not cache
+        }
+    }
+
     $lastmodified = $pathisstring ? time() : filemtime($path);
     $filesize     = $pathisstring ? strlen($path) : filesize($path);
 

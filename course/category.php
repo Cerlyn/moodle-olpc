@@ -57,15 +57,28 @@
         if ($resort and confirm_sesskey()) {
             if ($courses = get_courses($category->id, "fullname ASC", 'c.id,c.fullname,c.sortorder')) {
                 // move it off the range
-                $count = get_record_sql('SELECT MAX(sortorder) AS max, 1
+
+                $sortorderresult = get_record_sql('SELECT MIN(sortorder) AS min, 1
                                          FROM ' . $CFG->prefix . 'course WHERE category=' . $category->id);
-                $count = $count->max + 100;
+                $sortordermin = $sortorderresult->min;
+
+                $sortorderresult = get_record_sql('SELECT MAX(sortorder) AS max, 1
+                                         FROM ' . $CFG->prefix . 'course WHERE category=' . $category->id);
+                $sortorder = $sortordermax = $sortorderresult->max + 100;
+
+                //place the courses above the maximum existing sortorder to avoid duplicate index errors
+                //after they've been sorted we'll shift them down again
                 begin_sql();
                 foreach ($courses as $course) {
-                    set_field('course', 'sortorder', $count, 'id', $course->id);
-                    $count++;
+                    set_field('course', 'sortorder', $sortorder, 'id', $course->id);
+                    $sortorder++;
                 }
                 commit_sql();
+
+                //shift course sortorder back down the amount we moved them up
+                execute_sql('UPDATE '. $CFG->prefix .'course SET sortorder = sortorder-'.($sortordermax-$sortordermin).
+                        ' WHERE category='.$category->id);
+
                 fix_course_sortorder($category->id);
             }
         }
@@ -118,7 +131,10 @@
 /// Print current category description
     if (!$editingon && $category->description) {
         print_box_start();
-        echo format_text($category->description); // for multilang filter
+        $options = new stdClass();
+        $options->noclean = true;
+        $options->para = false;
+        echo format_text($category->description, FORMAT_MOODLE, $options); // for multilang filter
         print_box_end();
     }
 
@@ -137,7 +153,17 @@
             $courses = array();
             foreach ($data as $key => $value) {
                 if (preg_match('/^c\d+$/', $key)) {
-                    array_push($courses, substr($key, 1));
+                    $courseid = substr($key, 1);
+                    array_push($courses, $courseid);
+
+                    // check this course's category
+                    if ($movingcourse = get_record('course', 'id', $courseid)) {
+                        if ($movingcourse->category != $id ) {
+                            error('The course doesn\'t belong to this category');
+                        }
+                    } else {
+                        error('Error finding the course');
+                    }
                 }
             }
             move_courses($courses, $data->moveto);
@@ -145,7 +171,6 @@
 
     /// Hide or show a course
         if ((!empty($hide) or !empty($show)) and confirm_sesskey()) {
-            require_capability('moodle/course:visibility', $context);
             if (!empty($hide)) {
                 $course = get_record('course', 'id', $hide);
                 $visible = 0;
@@ -153,7 +178,10 @@
                 $course = get_record('course', 'id', $show);
                 $visible = 1;
             }
+
             if ($course) {
+                $coursecontext = get_context_instance(CONTEXT_COURSE, $course->id);
+                require_capability('moodle/course:visibility', $coursecontext);
                 if (!set_field('course', 'visible', $visible, 'id', $course->id)) {
                     notify('Could not update that course!');
                 }
@@ -183,8 +211,11 @@
                 $swapcourse = get_record('course', 'category',  $category->id,
                         'sortorder', $movecourse->sortorder + 1);
             }
-
             if ($swapcourse and $movecourse) {
+                // check course's category
+                if ($movecourse->category != $id) {
+                    error('The course doesn\'t belong to this category');
+                }
                 // Renumber everything for robustness
                 begin_sql();
                 if (!(    set_field('course', 'sortorder', $max, 'id', $swapcourse->id)

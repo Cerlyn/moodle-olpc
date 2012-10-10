@@ -1,6 +1,6 @@
 <?php  // $Id$
     require_once('../../config.php');
-    require_once('locallib.php');
+    require_once($CFG->dirroot.'/mod/scorm/locallib.php');
 
     $id = optional_param('id', '', PARAM_INT);       // Course Module ID, or
     $a = optional_param('a', '', PARAM_INT);         // scorm ID
@@ -78,10 +78,11 @@
     }
 
     if ($version == 'AICC') {
+        $sco_params = '';
         if (isset($sco->parameters) && (!empty($sco->parameters))) {
-            $sco->parameters = '&'. $sco->parameters;
+            $sco_params = '&'. $sco->parameters;
         }
-        $launcher = $sco->launch.$connector.'aicc_sid='.sesskey().'&aicc_url='.$CFG->wwwroot.'/mod/scorm/aicc.php'.$sco->parameters;
+        $launcher = $sco->launch.$connector.'aicc_sid='.sesskey().'&aicc_url='.$CFG->wwwroot.'/mod/scorm/aicc.php'.$sco_params;
     } else {
         if (isset($sco->parameters) && (!empty($sco->parameters))) {
             $launcher = $sco->launch.$connector.$sco->parameters;

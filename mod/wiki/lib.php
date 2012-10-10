@@ -397,14 +397,16 @@ function wiki_get_default_entry(&$wiki, &$course, $userid=0, $groupid=0) {
     global $USER;
     /// If there is a groupmode, get the user's group id.
     $groupmode = groups_get_activity_groupmode($wiki);
-    // if groups mode is in use and no group supplied, use the first one found
     if ($groupmode && !$groupid) {
-        if(($mygroupids=mygroupid($course->id)) && count($mygroupids)>0) {
-            // Use first group. They ought to be able to change later
-            $groupid=$mygroupids[0];
+        // Get a group of wiki that user has access to in the course with groupingid.
+        $groups = groups_get_all_groups($course->id, $USER->id, $wiki->groupingid);
+        if ($groups && count($groups) > 0) {
+            // Select the first element in the array. Set the groupid to the id of the first element.
+            $group = current($groups);
+            $groupid = $group->id;
         } else {
             // Whatever groups are in the course, pick one
-            $coursegroups = groups_get_all_groups($course->id);
+            $coursegroups = groups_get_all_groups($course->id, 0, $wiki->groupingid);
             if(!$coursegroups || count($coursegroups)==0) {
                 error("Can't access wiki in group mode when no groups are configured for the course");
             }
@@ -989,11 +991,13 @@ function wiki_can_add_entry(&$wiki, &$user, &$course, $userid=0, $groupid=0) {
         else if ($groupid == 0) {
             return ($mygroupid != 0 and wiki_is_teacher($wiki));
         }
-        /// If there is a group mode, non-editing teachers with an assigned group, can only create wikis
-        /// in their group. Non-editing teachers with no assigned group and editing teachers can create any wiki.
+        /// If requesting a group, must be an editing teacher, a non-editing teacher with no assigned group,
+        /// or a non-editing teacher requesting their group. or a student in group, but wiki is empty.
         else {
             return (wiki_is_teacheredit($wiki) or
-                    (wiki_is_teacher($wiki) and ($mygroupid == 0 or @in_array($groupid, $mygroupid))));
+                    (wiki_is_teacher($wiki) and ($mygroupid == 0 or @in_array($groupid, $mygroupid))) or
+                    (wiki_is_student($wiki, $user->id) and @in_array($groupid, $mygroupid))
+                    );
         }
         break;
     }
@@ -1086,7 +1090,12 @@ function wiki_user_can_access_group_wiki(&$wiki, $groupid, &$course) {
 
     /// Get the groupmode. It's been added to the wiki object.
     $groupmode = groups_get_activity_groupmode($wiki);
-    $usersgroup = mygroupid($course->id);
+
+    if ($usersgroup = groups_get_all_groups($course->id, $USER->id, $wiki->groupingid)) {
+        $usersgroup = array_keys($usersgroup);
+    } else {
+        $usersgroup = array();
+    }
     $isteacher = wiki_is_teacher($wiki, $USER->id);
 
     /// A user can access a group wiki, if:

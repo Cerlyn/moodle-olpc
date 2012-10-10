@@ -533,6 +533,7 @@ if ($nextstage == SAVE) {
     $str .= 'unset($CFG);'."\r\n";
     $str .= "\r\n";
 
+    $str .= '$CFG = new stdClass();'."\r\n";
     $str .= '$CFG->dbtype    = \''.$INSTALL['dbtype']."';\r\n";
     $str .= '$CFG->dbhost    = \''.addslashes($INSTALL['dbhost'])."';\r\n";
     if (!empty($INSTALL['dbname'])) {
@@ -552,6 +553,9 @@ if ($nextstage == SAVE) {
     $str .= "\r\n";
 
     $str .= '$CFG->directorypermissions = 00777;  // try 02777 on a server in Safe Mode'."\r\n";
+    $str .= "\r\n";
+
+    $str .= '$CFG->passwordsaltmain = \''.addsingleslashes(complex_random_string()).'\';'."\r\n";
     $str .= "\r\n";
 
     $str .= 'require_once("$CFG->dirroot/lib/setup.php");'."\r\n";
@@ -629,7 +633,7 @@ if (isset($_GET['help'])) {
                     echo '<div id="mssql">' . get_string('databasesettingssub_mssql', 'install');
                 /// Link to mssql installation page
                     echo "<p style='text-align:right'><a href=\"javascript:void(0)\" ";
-                    echo "onclick=\"return window.open('http://docs.moodle.org/en/Installing_MSSQL_for_PHP')\"";
+                    echo "onclick=\"return window.open('http://docs.moodle.org/19/en/Installing_MSSQL_for_PHP')\"";
                     echo ">";
                     echo '<img src="pix/docs.gif' . '" alt="Docs" class="iconhelp" />';
                     echo get_string('moodledocslink', 'install') . '</a></p>';
@@ -638,7 +642,7 @@ if (isset($_GET['help'])) {
                     echo '<div id="mssql_n">' . get_string('databasesettingssub_mssql_n', 'install');
                 /// Link to mssql installation page
                     echo "<p style='text-align:right'><a href=\"javascript:void(0)\" ";
-                    echo "onclick=\"return window.open('http://docs.moodle.org/en/Installing_MSSQL_for_PHP')\"";
+                    echo "onclick=\"return window.open('http://docs.moodle.org/19/en/Installing_MSSQL_for_PHP')\"";
                     echo ">";
                     echo '<img src="pix/docs.gif' . '" alt="Docs" />';
                     echo get_string('moodledocslink', 'install') . '</a></p>';
@@ -647,7 +651,7 @@ if (isset($_GET['help'])) {
                     echo '<div id="odbc_mssql">'. get_string('databasesettingssub_odbc_mssql', 'install');
                 /// Link to mssql installation page
                     echo "<p style='text-align:right'><a href=\"javascript:void(0)\" ";
-                    echo "onclick=\"return window.open('http://docs.moodle.org/en/Installing_MSSQL_for_PHP')\"";
+                    echo "onclick=\"return window.open('http://docs.moodle.org/19/en/Installing_MSSQL_for_PHP')\"";
                     echo ">";
                     echo '<img src="pix/docs.gif' . '" alt="Docs" class="iconhelp" />';
                     echo get_string('moodledocslink', 'install') . '</a></p>';
@@ -656,7 +660,7 @@ if (isset($_GET['help'])) {
                     echo '<div id="oci8po">' . get_string('databasesettingssub_oci8po', 'install');
                 /// Link to oracle installation page
                     echo "<p style='text-align:right'><a href=\"javascript:void(0)\" ";
-                    echo "onclick=\"return window.open('http://docs.moodle.org/en/Installing_Oracle_for_PHP')\"";
+                    echo "onclick=\"return window.open('http://docs.moodle.org/19/en/Installing_Oracle_for_PHP')\"";
                     echo ">";
                     echo '<img src="pix/docs.gif' . '" alt="Docs" class="iconhelp" />';
                     echo get_string('moodledocslink', 'install') . '</a></p>';

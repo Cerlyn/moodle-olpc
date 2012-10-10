@@ -57,7 +57,7 @@
 
     //only check pop ups if the user is not a teacher, and popup is set
 
-    $bodytags = (has_capability('mod/quiz:attempt', $context) && $quiz->popup)?'onload="popupchecker(\'' . get_string('popupblockerwarning', 'quiz') . '\');"':'';
+    $bodytags = (has_capability('mod/quiz:attempt', $context) && $quiz->popup == 1)?'onload="popupchecker(\'' . get_string('popupblockerwarning', 'quiz') . '\');"':'';
     $PAGE->print_header($course->shortname.': %fullname%','',$bodytags);
 
     echo '<table id="layout-table"><tr>';
@@ -267,11 +267,11 @@
             }
 
             // Ouside the if because we may be showing feedback but not grades.
-            $attemptgrade = quiz_rescale_grade($attempt->sumgrades, $quiz);
+            $attemptgrade = quiz_rescale_grade($attempt->sumgrades, $quiz, false);
 
             if ($gradecolumn) {
                 if ($attemptoptions->scores && $attempt->timefinish > 0) {
-                    $formattedgrade = $attemptgrade;
+                    $formattedgrade = round($attemptgrade, $quiz->decimalpoints);
                     // highlight the highest grade if appropriate
                     if ($overallstats && $numattempts > 1 && !is_null($mygrade) && $attemptgrade == $mygrade && $quiz->grademethod == QUIZ_GRADEHIGHEST) {
                         $table->rowclass[$attempt->attempt] = 'bestrow';
@@ -313,7 +313,7 @@
             if ($available && $moreattempts) {
                 $a = new stdClass;
                 $a->method = quiz_get_grading_option_name($quiz->grademethod);
-                $a->mygrade = $mygrade;
+                $a->mygrade = round($mygrade, $quiz->decimalpoints);
                 $a->quizgrade = $quiz->grade;
                 $resultinfo .= print_heading(get_string('gradesofar', 'quiz', $a), '', 2, 'main', true);
             } else {
@@ -368,6 +368,9 @@
                 $tempunavailable = '';
                 $lastattempt = end($attempts);
                 $lastattempttime = $lastattempt->timefinish;
+                if ($quiz->timelimit > 0) {
+                    $lastattempttime = min($lastattempttime, $lastattempt->timestart + $quiz->timelimit*60);
+                }
                 if ($numattempts == 1 && $quiz->delay1 && $timenow <= $lastattempttime + $quiz->delay1) {
                     $tempunavailable = get_string('temporaryblocked', 'quiz') .
                             ' <strong>'. userdate($lastattempttime + $quiz->delay1). '</strong>';
@@ -405,7 +408,7 @@
             $attempturl = "attempt.php?id=$cm->id";
 
             // Prepare options depending on whether the quiz should be a popup.
-            if (!empty($quiz->popup)) {
+            if ($quiz->popup == 1) {
                 $window = 'quizpopup';
                 $windowoptions = "left=0, top=0, height='+window.screen.height+', " .
                         "width='+window.screen.width+', channelmode=yes, fullscreen=yes, " .
@@ -421,7 +424,9 @@
                     echo "if (confirm('".addslashes_js($strconfirmstartattempt)."')) ";
                 }
                 echo "window.open('$attempturl','$window','$windowoptions');", '" />';
-            } else {
+            } else if ($quiz->popup == 2 && !quiz_check_safe_browser()) {
+                notify(get_string('safebrowsererror', 'quiz'));
+            }else {
                 print_single_button("attempt.php", array('id'=>$cm->id), $buttontext, 'get', '', false, '', false, $strconfirmstartattempt);
             }
 
@@ -483,7 +488,7 @@ function make_review_link($linktext, $quiz, $attempt, $context) {
     }
 
     $url = "review.php?q=$quiz->id&amp;attempt=$attempt->id";
-    if ($quiz->popup) {
+    if ($quiz->popup == 1) {
         $windowoptions = "left=0, top=0, channelmode=yes, fullscreen=yes, scrollbars=yes, resizeable=no, directories=no, toolbar=no, titlebar=no, location=no, status=no, menubar=no";
         return link_to_popup_window('/mod/quiz/' . $url, 'quizpopup', $linktext, '+window.screen.height+', '+window.screen.width+', '', $windowoptions, true);
     } else {

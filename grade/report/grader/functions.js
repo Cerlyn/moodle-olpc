@@ -14,15 +14,25 @@ function set_row(idx) {
 }
 
 /** highlight/unset the column of a table **/
-function set_col(idx) {
+function set_col(col,gradecelloffset,lastheaderrow) {
     var table = document.getElementById('user-grades');
-    for (var i = 1; i < table.rows.length; i++) {
-        if (table.rows[i].cells[idx]) {
-            if (table.rows[i].cells[idx].className.search(/vmarked/) != -1) {
-                table.rows[i].cells[idx].className = table.rows[i].cells[idx].className.replace(' vmarked', '');
-            } else {
-                table.rows[i].cells[idx].className += ' vmarked';
-            }
+
+    //highlight the column header
+    flip_vmarked(table,lastheaderrow,col);
+
+    //add any grade cell offset (due to colspans) then iterate down the table
+    col += gradecelloffset;
+    for (var row = lastheaderrow + 1; row < table.rows.length; row++) {
+        flip_vmarked(table,row,col);
+    }
+}
+
+function flip_vmarked(table,row,col) {
+    if (table.rows[row].cells[col]) {
+        if (table.rows[row].cells[col].className.search(/vmarked/) != -1) {
+            table.rows[row].cells[col].className = table.rows[row].cells[col].className.replace(' vmarked', '');
+        } else {
+            table.rows[row].cells[col].className += ' vmarked';
         }
     }
 }

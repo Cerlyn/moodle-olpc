@@ -15,6 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+if (!defined('MOODLE_INTERNAL')) {
+    die('Direct access to this script is forbidden.');    ///  It must be included from a Moodle page
+}
+
 require_once $CFG->libdir.'/formslib.php';
 
 class grade_export_form extends moodleform {
@@ -126,6 +130,7 @@ class grade_export_form extends moodleform {
         }
 
         $mform->addElement('hidden', 'id', $COURSE->id);
+        $mform->setType('id', PARAM_INT);
         $this->add_action_buttons(false, get_string('submit'));
 
     }

@@ -87,6 +87,7 @@ $string['entrysaved'] = 'Your entry has been saved';
 $string['errormustbeteacher'] = 'You need to be a teacher to use this page!';
 $string['example'] = 'Database module example';
 $string['excel'] = 'Excel';
+$string['expired'] = 'Sorry, this activity closed on {$a} and is no longer available';
 $string['export'] = 'Export';
 $string['exportaszip'] = 'Export as zip';
 $string['exportdatabaserecords'] = 'Export Database records';
@@ -178,7 +179,9 @@ $string['nomatch'] = 'No matching entries found!';
 $string['nomaximum'] = 'No maximum';
 $string['norecords'] = 'No entries in database';
 $string['nosingletemplate'] = 'Single template is not yet defined';
+$string['notapproved'] = 'Entry is not approved yet.';
 $string['notinjectivemap'] = 'Not an injective map';
+$string['notopenyet'] = 'Sorry, this activity is not available until {$a}';
 $string['number'] = 'Number';
 $string['numberrssarticles'] = 'RSS articles';
 $string['numnotapproved'] = 'Pending';
@@ -212,7 +215,7 @@ $string['recordsnotsaved'] = 'No entry was saved. Please check the format of the
 $string['recordssaved'] = 'entries saved';
 $string['requireapproval'] = 'Require approval?';
 $string['requiredentries'] = 'Required entries';
-$string['requiredentrieschanged'] = '<p><strong>IMPORTANT - PLEASE READ </strong></p><p>Due to a bug fix, the behaviour of database activities using the \'Required entries\' and \'Required entries before viewing settings\' settings will change. A more detailed explaination of the changes can be read on <a href=\"http://moodle.org/mod/forum/discuss.php?d=110928\" target=\"_blank\">the database module forum</a>. The expected behavior of these settings can also be read on <a href=\"http://docs.moodle.org/en/Adding/editing_a_database#Required_entries\" target=\"_blank\">Moodle Docs</a>.
+$string['requiredentrieschanged'] = '<p><strong>IMPORTANT - PLEASE READ </strong></p><p>Due to a bug fix, the behaviour of database activities using the \'Required entries\' and \'Required entries before viewing settings\' settings will change. A more detailed explaination of the changes can be read on <a href=\"http://moodle.org/mod/forum/discuss.php?d=110928\" target=\"_blank\">the database module forum</a>. The expected behavior of these settings can also be read on <a href=\"http://docs.moodle.org/19/en/Adding/editing_a_database#Required_entries\" target=\"_blank\">Moodle Docs</a>.
 </p><p>This change affects the following databases in your system: (Please save this list now, and after the upgrade, check that these activities still work the way that the teacher intends.)</p><strong style=\"color:red\">$a->text</strong><br/>';
 $string['requiredentriestoview'] = 'Entries required before viewing';
 $string['resettemplate'] = 'Reset template';

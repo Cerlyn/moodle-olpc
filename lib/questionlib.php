@@ -517,7 +517,7 @@ function question_delete_course($course, $feedback=true) {
     //Cache some strings
     $strcatdeleted = get_string('unusedcategorydeleted', 'quiz');
     $coursecontext = get_context_instance(CONTEXT_COURSE, $course->id);
-    $categoriescourse = get_records('question_categories', 'contextid', $coursecontext->id, 'parent', 'id, parent, name');
+    $categoriescourse = get_records('question_categories', 'contextid', $coursecontext->id, 'parent', 'id, parent, name, contextid');
 
     if ($categoriescourse) {
 
@@ -676,7 +676,7 @@ function question_delete_activity($cm, $feedback=true) {
     //Cache some strings
     $strcatdeleted = get_string('unusedcategorydeleted', 'quiz');
     $modcontext = get_context_instance(CONTEXT_MODULE, $cm->id);
-    if ($categoriesmods = get_records('question_categories', 'contextid', $modcontext->id, 'parent', 'id, parent, name')){
+    if ($categoriesmods = get_records('question_categories', 'contextid', $modcontext->id, 'parent', 'id, parent, name, contextid')){
         //Sort categories following their tree (parent-child) relationships
         //this will make the feedback more readable
         $categoriesmods = sort_categories_by_tree($categoriesmods);
@@ -822,7 +822,9 @@ function get_question_states(&$questions, $cmoptions, $attempt, $lastattemptid =
 
     // The question field must be listed first so that it is used as the
     // array index in the array returned by get_records_sql
-    $statefields = 'n.questionid as question, s.*, n.sumpenalty, n.manualcomment';
+    $statefields = 'n.questionid as question, s.id, s.attempt, s.originalquestion, ' .
+            's.seq_number, s.answer, s.timestamp, s.event, s.grade, s.raw_grade, ' .
+            's.penalty, n.sumpenalty, n.manualcomment';
     // Load the newest states for the questions
     $sql = "SELECT $statefields".
            "  FROM {$CFG->prefix}question_states s,".
@@ -856,12 +858,15 @@ function get_question_states(&$questions, $cmoptions, $attempt, $lastattemptid =
                 // If the new attempt is to be based on this previous attempt.
                 // Find the responses from the previous attempt and save them to the new session
 
-                // Load the last graded state for the question
-                $statefields = 'n.questionid as question, s.*, n.sumpenalty';
+                // Load the last graded state for the question. Note, $statefields is
+                // the same as above, except that we don't want n.manualcomment.
+                $statefields = 'n.questionid as question, s.id, s.attempt, s.originalquestion, ' .
+                        's.seq_number, s.answer, s.timestamp, s.event, s.grade, s.raw_grade, ' .
+                        's.penalty, n.sumpenalty';
                 $sql = "SELECT $statefields".
                        "  FROM {$CFG->prefix}question_states s,".
                        "       {$CFG->prefix}question_sessions n".
-                       " WHERE s.id = n.newgraded".
+                       " WHERE s.id = n.newest".
                        "   AND n.attemptid = '$lastattemptid'".
                        "   AND n.questionid = '$i'";
                 if (!$laststate = get_record_sql($sql)) {
@@ -1791,7 +1796,7 @@ function sort_categories_by_tree(&$categories, $id = 0, $level = 1) {
     if ($level == 1) {
         foreach ($keys as $key) {
             //If not processed and it's a good candidate to start (because its parent doesn't exist in the course)
-            if (!isset($categories[$key]->processed) && !record_exists('question_categories', 'course', $categories[$key]->course, 'id', $categories[$key]->parent)) {
+            if (!isset($categories[$key]->processed) && !record_exists('question_categories', 'contextid', $categories[$key]->contextid, 'id', $categories[$key]->parent)) {
                 $children[$key] = $categories[$key];
                 $categories[$key]->processed = true;
                 $children = $children + sort_categories_by_tree($categories, $children[$key]->id, $level+1);

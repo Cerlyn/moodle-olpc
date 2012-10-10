@@ -95,6 +95,7 @@ function data_backup_one_mod($bf,$preferences,$data) {
     fwrite ($bf,full_tag("RSSTITLETEMPLATE",4,false,$data->rsstitletemplate));
     fwrite ($bf,full_tag("CSSTEMPLATE",4,false,$data->csstemplate));
     fwrite ($bf,full_tag("JSTEMPLATE",4,false,$data->jstemplate));
+    fwrite ($bf,full_tag("ASEARCHTEMPLATE",4,false,$data->asearchtemplate));
     fwrite ($bf,full_tag("APPROVAL",4,false,$data->approval));
     fwrite ($bf,full_tag("SCALE",4,false,$data->scale));
     fwrite ($bf,full_tag("ASSESSED",4,false,$data->assessed));
@@ -242,6 +243,7 @@ function backup_data_comments($bf,$preferences,$recordid){
             fwrite ($bf,full_tag("RECORDID",8,false,$com_sub->recordid));
             fwrite ($bf,full_tag("USERID",8,false,$com_sub->userid));
             fwrite ($bf,full_tag("CONTENT",8,false,$com_sub->content));
+            fwrite ($bf,full_tag("FORMAT",8,false,$com_sub->format));
             fwrite ($bf,full_tag("CREATED",8,false,$com_sub->created));
             fwrite ($bf,full_tag("MODIFIED",8,false,$com_sub->modified));
             //End submission

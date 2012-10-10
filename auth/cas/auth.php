@@ -60,6 +60,11 @@ class auth_plugin_cas extends auth_plugin_base {
 		$this->connectCAS();
 		return phpCAS::isAuthenticated() && (trim(moodle_strtolower(phpCAS::getUser())) == $username);
     }
+
+    function prevent_local_passwords() {
+        return true;
+    }
+
     /**
      * Returns true if this authentication plugin is 'internal'.
      *
@@ -92,8 +97,10 @@ class auth_plugin_cas extends auth_plugin_base {
       $username = optional_param("username");
 
       if (!empty($username)) {
-		  if (strstr($SESSION->wantsurl,'ticket') || strstr($SESSION->wantsurl,'NOCAS'))
-			  unset($SESSION->wantsurl);
+          if (isset($SESSION->wantsurl) && (strstr($SESSION->wantsurl, 'ticket') ||
+                                            strstr($SESSION->wantsurl, 'NOCAS'))) {
+              unset($SESSION->wantsurl);
+          }
           return;		
         }
 
@@ -107,6 +114,13 @@ class auth_plugin_cas extends auth_plugin_base {
 // Connection to CAS server
 	 $this->connectCAS();
 
+     if($this->config->certificate_check && $this->config->certificate_path){
+         phpCAS::setCasServerCACert($this->config->certificate_path);
+     }else{
+         // Don't try to validate the server SSL credentials
+         phpCAS::setNoCasServerValidation();
+     }
+
 	  // Gestion de la connection CAS si acc�s direct d'un ent ou autre	
 	 if (phpCAS::checkAuthentication()) {
 		$frm->username=phpCAS::getUser();
@@ -116,7 +130,7 @@ class auth_plugin_cas extends auth_plugin_base {
 		return;
 	 }	 	
 
-	  if ($_GET["loginguest"]== true) {
+          if (isset($_GET["loginguest"]) && ($_GET["loginguest"]== true)) {
 			$frm->username="guest";
 			$frm->password="guest";
 			return;
@@ -156,7 +170,7 @@ class auth_plugin_cas extends auth_plugin_base {
 	  if ($this->config->logoutcas ) {
 	        $backurl = $CFG->wwwroot;
 		  $this->connectCAS();
-	        phpCAS::logout($backurl);
+                phpCAS::logoutWithURL($backurl);
 	     }
     }
     /**
@@ -170,12 +184,13 @@ class auth_plugin_cas extends auth_plugin_base {
 	global $PHPCAS_CLIENT;
 // mode proxy CAS
 if ( !is_object($PHPCAS_CLIENT) ) {
+        // Make sure phpCAS doesn't try to start a new PHP session when connecting to the CAS server.
 	if  ($this->config->proxycas) {
-	    phpCAS::proxy($this->config->casversion, $this-> config->hostname, (int) $this->config->port, $this->config->baseuri);
+	    phpCAS::proxy($this->config->casversion, $this-> config->hostname, (int) $this->config->port, $this->config->baseuri, false);
 	}
 // mode client CAS
 	else {
-	    phpCAS::client($this->config->casversion, $this-> config->hostname, (int) $this->config->port, $this->config->baseuri);
+	    phpCAS::client($this->config->casversion, $this-> config->hostname, (int) $this->config->port, $this->config->baseuri, false);
 	}
     }
 	
@@ -190,6 +205,19 @@ if ( !is_object($PHPCAS_CLIENT) ) {
      */
     function config_form($config, $err, $user_fields) {
         include 'config.html';
+    }
+
+    /**
+     * A chance to validate form data, and last chance to
+     * do stuff before it is inserted in config_plugin
+     * @param object object with submitted configuration settings (without system magic quotes)
+     * @param array $err array of error messages
+     */
+    function validate_form(&$form, &$err) {
+        $certificate_path = trim($form->certificate_path);
+        if ($form->certificate_check && empty($certificate_path)) {
+            $err['certificate_path'] = get_string('auth_cas_certificate_path_empty', 'auth');
+        }
     }
     /**
      * Returns the URL for changing the user's pw, or empty if the default can
@@ -237,6 +265,10 @@ if ( !is_object($PHPCAS_CLIENT) ) {
             $config->logoutcas = '';
         if (!isset ($config->multiauth))
             $config->multiauth = '';
+        if (!isset ($config->certificate_check))
+            $config->certificate_check = '';
+        if (!isset ($config->certificate_path))
+            $config->certificate_path = '';
         // LDAP settings
         if (!isset($config->host_url))
             { $config->host_url = ''; }
@@ -279,6 +311,8 @@ if ( !is_object($PHPCAS_CLIENT) ) {
         set_config('proxycas',     $config->proxycas,     'auth/cas');
         set_config('logoutcas',     $config->logoutcas,     'auth/cas');
         set_config('multiauth',     $config->multiauth,     'auth/cas');
+        set_config('certificate_check',     $config->certificate_check,     'auth/cas');
+        set_config('certificate_path',     $config->certificate_path,     'auth/cas');
         // save LDAP settings
         set_config('host_url', $config->host_url, 'auth/cas');
         set_config('ldapencoding', $config->ldapencoding, 'auth/cas');
@@ -359,6 +393,13 @@ if ( !is_object($PHPCAS_CLIENT) ) {
      * @return mixed array with no magic quotes or false on error
      */
     function get_userinfo($username) {
+        // No LDAP servers configured, so user info has to be provided
+        // via other methods (CSV file, manually, etc.). Return empty
+        // array so existing user info is not lost.
+        if (empty($this->config->host_url)) {
+            return array();
+        }
+
         $textlib = textlib_get_instance();
         $extusername = $textlib->convert(stripslashes($username), 'utf-8', $this->config->ldapencoding);
         $ldapconnection = $this->ldap_connect();
@@ -469,6 +510,9 @@ if ( !is_object($PHPCAS_CLIENT) ) {
             //ldap_connect returns ALWAYS true
             if (!empty($this->config->version)) {
                 ldap_set_option($connresult, LDAP_OPT_PROTOCOL_VERSION, $this->config->version);
+            }
+            if ($this->config->user_type == 'ad') {
+                 ldap_set_option($connresult, LDAP_OPT_REFERRALS, 0);
             }
             if (!empty($binddn)) {
                 //bind with search-user
@@ -613,6 +657,12 @@ if ( !is_object($PHPCAS_CLIENT) ) {
      */
     function sync_users ($bulk_insert_records = 1000, $do_updates = true) {
         global $CFG;
+
+        if(empty($this->config->host_url)) {
+            echo "No LDAP server configured for CAS! Syncing disabled.\n";
+            return;
+        }
+
         $textlib = textlib_get_instance();
         $droptablesql = array(); /// sql commands to drop the table (because session scope could be a problem for
                                  /// some persistent drivers like ODBTP (mssql) or if this function is invoked
@@ -625,7 +675,7 @@ if ( !is_object($PHPCAS_CLIENT) ) {
                 $droptablesql[] = 'DROP TEMPORARY TABLE ' . $temptable; // sql command to drop the table (because session scope could be a problem)
                 execute_sql_arr($droptablesql, true, false); /// Drop temp table to avoid persistence problems later
                 echo "Creating temp table $temptable\n";
-                execute_sql('CREATE TEMPORARY TABLE ' . $temptable . ' (username VARCHAR(64), PRIMARY KEY (username)) TYPE=MyISAM', false);
+                execute_sql('CREATE TEMPORARY TABLE ' . $temptable . ' (username VARCHAR(64), PRIMARY KEY (username)) ENGINE=MyISAM', false);
                 break;
             case 'postgres':
                 $temptable = $CFG->prefix . 'extuser';
@@ -768,9 +818,9 @@ if ( !is_object($PHPCAS_CLIENT) ) {
                     $updateuser->id = $user->id;
                     $updateuser->auth = 'cas';
                     if (update_record('user', $updateuser)) {
-                        echo "\t"; print_string('auth_dbreviveser', 'auth', array($user->username, $user->id)); echo "\n";
+                        echo "\t"; print_string('auth_dbreviveduser', 'auth', array($user->username, $user->id)); echo "\n";
                     } else {
-                        echo "\t"; print_string('auth_dbreviveusererror', 'auth', $user->username); echo "\n";
+                        echo "\t"; print_string('auth_dbrevivedusererror', 'auth', $user->username); echo "\n";
                     }
                 }
                 commit_sql();
@@ -961,7 +1011,7 @@ if ( !is_object($PHPCAS_CLIENT) ) {
      * @return boolean result
      */
     function iscreator($username) {
-        if ((empty($this->config->attrcreators) && empty($this->config->groupecreators)) or empty($this->config->memberattribute)) {
+        if (empty($this->config->host_url) or (empty($this->config->attrcreators) && empty($this->config->groupecreators)) or empty($this->config->memberattribute)) {
             return null;
         }
         $textlib = textlib_get_instance();

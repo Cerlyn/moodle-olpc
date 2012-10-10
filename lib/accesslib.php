@@ -144,7 +144,7 @@ define('CONTEXT_COURSE', 50);
 define('CONTEXT_MODULE', 70);
 define('CONTEXT_BLOCK', 80);
 
-// capability risks - see http://docs.moodle.org/en/Development:Hardening_new_Roles_system
+// capability risks - see http://docs.moodle.org/dev/Hardening_new_Roles_system
 define('RISK_MANAGETRUST', 0x0001);
 define('RISK_CONFIG',      0x0002);
 define('RISK_XSS',         0x0004);
@@ -1118,10 +1118,12 @@ function get_user_courses_bycap($userid, $cap, $accessdata, $doanything, $sort='
         $c = make_context_subobj($c);
 
         if (has_capability_in_accessdata($cap, $c->context, $accessdata, $doanything)) {
-            $courses[] = $c;
-            if ($limit > 0 && $cc++ > $limit) {
+            if ($limit > 0 && $cc >= $limit) {
                 break;
             }
+            
+            $courses[] = $c;
+            $cc++;
         }
     }
     rs_close($rs);
@@ -4471,6 +4473,20 @@ function get_users_by_capability($context, $capability, $fields='', $sort='',
         $defaultroleinteresting = false;
     }
 
+    // is the default role interesting? does it have
+    // a relevant rolecap? (we use this a lot later)
+    if (($isfrontpage or is_inside_frontpage($context)) and !empty($CFG->defaultfrontpageroleid) and in_array((int)$CFG->defaultfrontpageroleid, $roleids, true)) {
+        if (!empty($CFG->fullusersbycapabilityonfrontpage)) {
+            // new in 1.9.6 - full support for defaultfrontpagerole MDL-19039
+            $frontpageroleinteresting = true;
+        } else {
+            // old style 1.9.0-1.9.5 - much faster + fewer negative override problems on frontpage
+            $frontpageroleinteresting = ($context->contextlevel == CONTEXT_COURSE);
+        }
+    } else {
+        $frontpageroleinteresting = false;
+    }
+
     //
     // Prepare query clauses
     //
@@ -4486,13 +4502,13 @@ function get_users_by_capability($context, $capability, $fields='', $sort='',
         } else {
             $grouptest = 'gm.groupid = ' . $groups;
         }
-        $grouptest = 'ra.userid IN (SELECT userid FROM ' .
+        $grouptest = 'u.id IN (SELECT userid FROM ' .
             $CFG->prefix . 'groups_members gm WHERE ' . $grouptest . ')';
 
         if ($useviewallgroups) {
             $viewallgroupsusers = get_users_by_capability($context,
                     'moodle/site:accessallgroups', 'u.id, u.id', '', '', '', '', $exceptions);
-            $wherecond['groups'] =  '('. $grouptest . ' OR ra.userid IN (' .
+            $wherecond['groups'] =  '('. $grouptest . ' OR u.id IN (' .
                                     implode(',', array_keys($viewallgroupsusers)) . '))';
         } else {
             $wherecond['groups'] =  '(' . $grouptest .')';
@@ -4557,9 +4573,7 @@ function get_users_by_capability($context, $capability, $fields='', $sort='',
     if (!$negperm) { 
 
         // at the frontpage, and all site users have it - easy!
-        if ($isfrontpage && !empty($CFG->defaultfrontpageroleid)
-            && in_array((int)$CFG->defaultfrontpageroleid, $roleids, true)) {
-            
+        if ($frontpageroleinteresting) {
             return get_records_sql("SELECT $fields
                                     FROM {$CFG->prefix}user u
                                     WHERE u.deleted = 0
@@ -4636,7 +4650,7 @@ function get_users_by_capability($context, $capability, $fields='', $sort='',
     }
 
     if ($context->contextlevel == CONTEXT_SYSTEM
-        || $isfrontpage
+        || $frontpageroleinteresting
         || $defaultroleinteresting) {
 
         // Handle system / sitecourse / defaultrole-with-perhaps-neg-overrides
@@ -4738,6 +4752,11 @@ function get_users_by_capability($context, $capability, $fields='', $sort='',
 
             // Did the last user end up with a positive permission?
             if ($lastuserid !=0) {
+                if ($frontpageroleinteresting) {
+                    // add frontpage role if interesting
+                    $ras[] = array('roleid' => $CFG->defaultfrontpageroleid,
+                                   'depth'  => $context->depth);
+                }
                 if ($defaultroleinteresting) {
                     // add the role at the end of $ras
                     $ras[] = array( 'roleid' => $CFG->defaultuserroleid,
@@ -4782,6 +4801,11 @@ function get_users_by_capability($context, $capability, $fields='', $sort='',
 
     // Prune last entry if necessary
     if ($lastuserid !=0) {
+        if ($frontpageroleinteresting) {
+            // add frontpage role if interesting
+            $ras[] = array('roleid' => $CFG->defaultfrontpageroleid,
+                           'depth'  => $context->depth);
+        }
         if ($defaultroleinteresting) {
             // add the role at the end of $ras
             $ras[] = array( 'roleid' => $CFG->defaultuserroleid,
@@ -4992,7 +5016,7 @@ function sort_by_roleassignment_authority($users, $context, $roles=array(), $sor
  * @param bool gethidden - whether to fetch hidden enrolments too
  * @return array()
  */
-function get_role_users($roleid, $context, $parent=false, $fields='', $sort='u.lastname ASC', $gethidden=true, $group='', $limitfrom='', $limitnum='') {
+function get_role_users($roleid, $context, $parent=false, $fields='', $sort='u.lastname ASC, u.firstname ASC', $gethidden=true, $group='', $limitfrom='', $limitnum='') {
     global $CFG;
 
     if (empty($fields)) {

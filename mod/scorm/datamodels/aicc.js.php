@@ -497,8 +497,7 @@ function AICCapi() {
         if (storetotaltime) {
             if (cmi.core.lesson_mode == 'normal') {
                 if (cmi.core.credit == 'credit') {
-                    cmi.core.lesson_status = 'completed';
-                    if (cmi.student_data.mastery_score != '') {
+                    if (cmi.student_data.mastery_score != '' && cmi.core.score.raw != '') {
                         if (cmi.core.score.raw >= cmi.student_data.mastery_score) {
                             cmi.core.lesson_status = 'passed';
                         } else {
@@ -508,7 +507,7 @@ function AICCapi() {
                 }
             }
             if (cmi.core.lesson_mode == 'browse') {
-                if (datamodel['cmi.core.lesson_status'].defaultvalue == '') {
+                if (datamodel['cmi.core.lesson_status'].defaultvalue == '' && cmi.core.lesson_status == 'not attempted') {
                     cmi.core.lesson_status = 'browsed';
                 }
             }
@@ -517,10 +516,13 @@ function AICCapi() {
         } else {
             datastring = CollectData(data,'cmi');
         }
+        datastring += '&attempt=<?php echo $attempt ?>';
+        datastring += '&scoid=<?php echo $scoid ?>';
+
         //popupwin(datastring);
         var myRequest = NewHttpReq();
         result = DoRequest(myRequest,"<?php p($CFG->wwwroot) ?>/mod/scorm/datamodel.php","id=<?php p($id) ?>&sesskey=<?php p($USER->sesskey) ?>"+datastring);
-        results = result.split('\n');
+        results = String(result).split('\n');
         errorCode = results[1];
         return results[0];
     }

@@ -3,7 +3,7 @@
 /// This page prints a particular instance of aicc/scorm package
 
     require_once('../../config.php');
-    require_once('locallib.php');
+    require_once($CFG->dirroot.'/mod/scorm/locallib.php');
 
     //
     // Checkin' script parameters
@@ -15,6 +15,12 @@
     $currentorg = optional_param('currentorg', '', PARAM_RAW); // selected organization
     $newattempt = optional_param('newattempt', 'off', PARAM_ALPHA); // the user request to start a new attempt
 
+    //IE 6 Bug workaround
+    if (strpos($_SERVER['HTTP_USER_AGENT'], 'MSIE 6') !== false) {
+        @ini_set('zlib.output_compression', 'Off');
+        @apache_setenv('no-gzip', 1);
+    }
+    
     if (!empty($id)) {
         if (! $cm = get_coursemodule_from_id('scorm', $id)) {
             error("Course Module ID was incorrect");
@@ -291,19 +297,19 @@
                     //<![CDATA[
                         scorm_resize(<?php echo $scorm->width.", ". $scorm->height; ?>);
                         function openpopup(url,name,options,width,height) {
-                            fullurl = "<?php echo $CFG->wwwroot.'/mod/scorm/' ?>" + url;
-                            windowobj = window.open(fullurl,name,options);
-                            if ((width==100) && (height==100)) {
-                                // Fullscreen
-                                windowobj.moveTo(0,0);
-                            } 
                             if (width<=100) {
                                 width = Math.round(screen.availWidth * width / 100);
                             }
                             if (height<=100) {
                                 height = Math.round(screen.availHeight * height / 100);
                             }
-                            windowobj.resizeTo(width,height);
+                            options += ",width="+width+",height="+height;
+                            fullurl = "<?php echo $CFG->wwwroot.'/mod/scorm/' ?>" + url;
+                            windowobj = window.open(fullurl,name,options);
+                            if ((width==100) && (height==100)) {
+                                // Fullscreen
+                                windowobj.moveTo(0,0);
+                            }
                             windowobj.focus();
                             return windowobj;
                         }
@@ -320,8 +326,9 @@
                     </noscript>
 <?php            
             //Added incase javascript popups are blocked
-            $link = '<a href="'.$CFG->wwwroot.'/mod/scorm/loadSCO.php?id='.$cm->id.$scoidstr.$modestr.'" target="new">'.get_string('popupblockedlinkname','scorm').'</a>';
-            print_simple_box(get_string('popupblocked','scorm',$link),'center');         
+            print_simple_box(get_string('popupblockmessage','scorm'),'center','','',5,'generalbox','altpopuplink');
+            $linkcourse = '<a href="'.$CFG->wwwroot.'/course/view.php?id='.$scorm->course.'">' . get_string('finishscormlinkname','scorm') . '</a>';
+            print_simple_box(get_string('finishscorm','scorm',$linkcourse),'center','','',5,'generalbox','altfinishlink');
         }
     } else {
         print_simple_box(get_string('noprerequisites','scorm'),'center');

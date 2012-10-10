@@ -25,7 +25,7 @@ class quiz_report extends quiz_default_report {
         
         if ($groupmode = groups_get_activity_groupmode($cm)) {   // Groups are being used
             if (!$download) {
-                groups_print_activity_menu($cm, "report.php?id=$cm->id&amp;mode=analysis");
+                groups_print_activity_menu($cm, $CFG->wwwroot . "/mod/quiz/report.php?id=$cm->id&amp;mode=analysis");
             }
         }
 
@@ -175,7 +175,7 @@ class quiz_report extends quiz_default_report {
                 }
                 $responses = get_question_actual_response($quizquestions[$i], $states[$i]);
                 foreach ($responses as $resp){
-                    if ($resp) {
+                    if ('' !== $resp) {
                         if ($key = array_search($resp, $questions[$qid]['responses'])) {
                             $questions[$qid]['rcounts'][$key]++;
                         } else {

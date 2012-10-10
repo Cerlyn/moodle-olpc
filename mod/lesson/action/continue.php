@@ -6,7 +6,7 @@
  * @license http://www.gnu.org/copyleft/gpl.html GNU Public License
  * @package lesson
  **/
-    confirm_sesskey();
+    require_sesskey();
 
     require_once($CFG->dirroot.'/mod/lesson/pagelib.php');
     require_once($CFG->libdir.'/blocklib.php');
@@ -414,13 +414,9 @@
             $userresponse = implode(",", $userresponse);
 
             $response = '';
-            if ($ncorrect == count($answers)-2) {  // dont count correct/wrong responses in the total.
-                foreach ($answers as $answer) {
-                    if ($answer->response == NULL && $answer->answer != NULL) {
-                        $response = $answer->answer;
-                        break;
-                    }
-                }
+            if ($ncorrect == count($answers) - 2) {  // dont count correct/wrong responses in the total.
+                $answer = reset($answers);
+                $response = $answer->answer;
                 if (isset($correctpageid)) {
                     $newpageid = $correctpageid;
                 }
@@ -429,16 +425,9 @@
                 }
                 $correctanswer = true;
             } else {
-                $t = 0;
-                foreach ($answers as $answer) {
-                    if ($answer->response == NULL && $answer->answer != NULL) {
-                        if ($t == 1) {
-                            $response = $answer->answer;
-                            break;
-                        }
-                        $t++;
-                    }
-                }
+                reset($answers);
+                $answer = next($answers);
+                $response = $answer->answer;
                 $newpageid = $wrongpageid;
                 $answerid = $wronganswerid;
             }
