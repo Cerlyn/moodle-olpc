@@ -34,7 +34,7 @@ Obsoletes:      moodle
 Provides:       moodle
 
 %description
-Cutom Moodle for the OLPC School Server.
+Custom Moodle for the OLPC School Server.
 
 Moodle is a course management system (CMS) - a free, Open Source software
 package designed using sound pedagogical principles, to help educators create
