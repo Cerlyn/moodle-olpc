@@ -17,7 +17,7 @@ ARCH = noarch
 # NOTE: Release is hardcoded in the spec file to 1
 NV = $(PKGNAME)-$(VERSION)
 NVR = $(NV)-$(RELEASE)
-DISTVER=xs11
+DISTVER=el6
 
 # rpm target directory
 BUILDDIR = $(PWD)/build
@@ -62,11 +62,11 @@ $(RPM): SRPM
 
 publish: SOURCES SRPM
 	rsync -e ssh --progress  $(RPM) \
-	    xs-dev.laptop.org:/xsrepos/testing/olpc/11/i586/
+	    xs-dev.laptop.org:/xsrepos/testing/olpc/xs-0.7/i386/
 	rsync -e ssh --progress $(SRPM) \
-	    xs-dev.laptop.org:/xsrepos/testing/olpc/11/source/SRPMS/
+	    xs-dev.laptop.org:/xsrepos/testing/olpc/xs-0.7/source/SRPMS/
 	rsync -e ssh --progress $(TARBALL) \
-	    xs-dev.laptop.org:/xsrepos/testing/olpc/11/source/SOURCES/
+	    xs-dev.laptop.org:/xsrepos/testing/olpc/xs-0.7/source/SOURCES/
 	ssh xs-dev.laptop.org sudo createrepo /xsrepos/testing/olpc/11/i586
 
 # install: install target handled inside the spec file
